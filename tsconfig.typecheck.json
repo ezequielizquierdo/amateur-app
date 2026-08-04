@@ -1,0 +1,20 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "composite": false,
+    "declaration": false,
+    "declarationMap": false,
+    "noEmit": true,
+    "rootDir": ".",
+    "baseUrl": ".",
+    "paths": {
+      "@amateur-app/shared-types": ["./packages/shared-types/src/index.ts"]
+    },
+    "types": ["vitest/globals"]
+  },
+  "include": [
+    "packages/*/src/**/*.ts",
+    "packages/*/tests/**/*.ts",
+    "vitest.config.ts"
+  ]
+}

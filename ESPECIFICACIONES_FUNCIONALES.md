@@ -572,12 +572,19 @@ Ejemplos de tags:
 # 10. Historial y memoria narrativa
 
 ```ts
+type JsonPrimitive = string | number | boolean | null;
+
+type JsonValue =
+  | JsonPrimitive
+  | JsonValue[]
+  | { [key: string]: JsonValue };
+
 type AppliedEffect = {
   field: string;
   operation: "add" | "set" | "multiply";
-  previousValue?: unknown;
-  appliedValue: unknown;
-  resultingValue?: unknown;
+  previousValue?: JsonValue;
+  appliedValue: JsonValue;
+  resultingValue?: JsonValue;
 };
 
 type DecisionRecord = {
@@ -666,7 +673,7 @@ type EventCondition = {
     | "lessThanOrEqual"
     | "in"
     | "notIn";
-  value: unknown;
+  value: JsonValue;
 };
 
 type ScheduledEvent = {
@@ -730,7 +737,7 @@ type GameState = {
 ## Reglas técnicas
 
 * `runId` identifica la partida.
-* `gameVersion` permite mantener compatibilidad con partidas anteriores.
+* `gameVersion` permite identificar la versión del formato de la partida. En esta etapa el motor utiliza la constante `GAME_VERSION = "0.1.0"` y no recibe la versión desde el llamador.
 * `seed` permitirá reproducir resultados.
 * `currentSeason` comienza en `1`.
 * `currentTurn` comienza en `0`.
@@ -741,7 +748,7 @@ type GameState = {
 
 # 13. Valores derivados
 
-Los valores derivados no deben guardarse si pueden calcularse de forma confiable.
+Como excepción explícita, `stats.footballLevel` es un valor derivado persistido: se calcula desde los atributos futbolísticos, no se modifica directamente y debe validarse que coincida con ellos. Los demás valores derivados de esta sección no se guardan si pueden calcularse de forma confiable.
 
 ## Nivel futbolístico
 
@@ -917,13 +924,9 @@ Para el MVP, la función de creación inicial puede recibir relaciones familiare
 
 No se debe inventar automáticamente una estructura familiar definitiva dentro del motor.
 
-Como comportamiento por defecto, puede crear:
+Si no se reciben relaciones iniciales, la partida comienza con `relationships: []`.
 
-* una relación materna;
-* una relación paterna;
-* dos amistades iniciales.
-
-Los nombres pueden recibirse como parámetros o utilizar valores genéricos temporales.
+El motor no inventa personajes, nombres, relaciones ni identificadores. Las relaciones recibidas se copian para que el estado creado no conserve referencias mutables del input.
 
 Más adelante, la creación del personaje permitirá configurar o generar esta estructura.
 

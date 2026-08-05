@@ -3,6 +3,8 @@ export { calculateFamilySupport } from "./calculations/calculate-family-support.
 export { calculateFootballLevel } from "./calculations/calculate-football-level.js";
 export { calculateLifeStage } from "./calculations/calculate-life-stage.js";
 export { clampStat } from "./clamp-stat.js";
+export { evaluateEventCondition } from "./events/conditions/evaluate-event-condition.js";
+export { evaluateEventConditionGroup } from "./events/conditions/evaluate-event-condition-group.js";
 export {
   applyInitialTraits,
   type InitialTraitResult,

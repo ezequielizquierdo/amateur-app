@@ -43,6 +43,7 @@ Posible resultado probabilístico
 Consecuencias futuras
       ↓
 Actualización de la historia
+```
 
 Ejemplo:
 
@@ -139,9 +140,10 @@ generación narrativa mediante IA.
 
 Cada acontecimiento tendrá un identificador estable y una versión.
 
-type EventId = string;
-type ChoiceId = string;
-type OutcomeId = string;
+type ContentId = string;
+type EventId = ContentId;
+type ChoiceId = ContentId;
+type OutcomeId = ContentId;
 
 type GameEvent = {
   id: EventId;
@@ -164,7 +166,9 @@ Reglas
 id no puede cambiar una vez publicado.
 version comienza en 1.
 Si se modifican efectos, condiciones u opciones, se incrementa la versión.
+EventId, ChoiceId, OutcomeId y chainId utilizarán el mismo patrón de identificador de contenido.
 Los identificadores utilizarán minúsculas, números y guiones bajos.
+El patrón no permite guiones bajos iniciales, finales o consecutivos.
 Las opciones deben tener identificadores únicos dentro del acontecimiento.
 Los acontecimientos deben tener identificadores únicos dentro del catálogo.
 
@@ -217,6 +221,9 @@ type EventTone =
   | "humorous";
 
 Estos datos no determinan por sí solos la lógica de la partida.
+
+chainId utiliza el mismo patrón de identificador de contenido que EventId, ChoiceId y OutcomeId.
+narrative.step, cuando exista, debe ser un entero positivo.
 
 Sirven para:
 
@@ -435,8 +442,17 @@ Debe existir al menos uno de los siguientes criterios:
 relationshipId;
 type;
 requiredTags.
-type RelationshipCondition = {
+type RelationshipExistsCondition = {
   type: "relationship";
+  mode: "exists";
+  selector: RelationshipSelector;
+
+  operator: "exists" | "notExists";
+};
+
+type RelationshipValueCondition = {
+  type: "relationship";
+  mode: "value";
   selector: RelationshipSelector;
 
   field:
@@ -452,12 +468,18 @@ type RelationshipCondition = {
     | "greaterThan"
     | "greaterThanOrEqual"
     | "lessThan"
-    | "lessThanOrEqual"
-    | "exists"
-    | "notExists";
+    | "lessThanOrEqual";
 
-  value?: JsonValue;
+  value: JsonValue;
 };
+
+type RelationshipCondition =
+  | RelationshipExistsCondition
+  | RelationshipValueCondition;
+
+El modo exists comprueba si existe o no una relación que cumpla el selector. No contiene field ni value.
+
+El modo value compara un campo de las relaciones seleccionadas. Los operadores numéricos sólo pueden utilizarse con affection, trust y conflict. isActive e isAlive sólo pueden compararse mediante equals o notEquals y requieren valores booleanos.
 
 Una relación cumple el selector cuando satisface todos los criterios declarados.
 
@@ -467,6 +489,7 @@ Ejemplo:
 
 {
   "type": "relationship",
+  "mode": "value",
   "selector": {
     "type": "aunt_uncle",
     "requiredTags": ["favorite_aunt"]
@@ -576,17 +599,44 @@ type MutableLifeStateField =
   | "numberOfChildren"
   | "housingStatus";
 
-type LifeStateEffect = {
+type LifeStateSetEffect = {
   type: "life_state";
-  field: MutableLifeStateField;
-  operation: "set" | "add";
-  value: JsonValue;
+  operation: "set";
+} & (
+  | { field: "educationStatus"; value: EducationStatus }
+  | { field: "employmentStatus"; value: EmploymentStatus }
+  | { field: "relationshipStatus"; value: RelationshipStatus }
+  | { field: "occupationId"; value: string }
+  | { field: "employerId"; value: string }
+  | { field: "city"; value: string }
+  | { field: "country"; value: string }
+  | { field: "numberOfChildren"; value: number }
+  | { field: "housingStatus"; value: HousingStatus }
+);
+
+type LifeStateAddEffect = {
+  type: "life_state";
+  field: "numberOfChildren";
+  operation: "add";
+  value: number;
 };
+
+type LifeStateClearEffect = {
+  type: "life_state";
+  field: "occupationId" | "employerId";
+  operation: "clear";
+};
+
+type LifeStateEffect =
+  | LifeStateSetEffect
+  | LifeStateAddEffect
+  | LifeStateClearEffect;
 
 Reglas:
 
 add sólo se admite para numberOfChildren.
-Los demás campos utilizan set.
+clear sólo se admite para occupationId y employerId, y no contiene value.
+Los demás campos utilizan set con un valor compatible con el campo.
 La edad y el año no se modificarán mediante eventos.
 El avance temporal tendrá un módulo específico posterior.
 11.4. Estado futbolístico
@@ -639,9 +689,10 @@ type CounterEffect = {
 Reglas:
 
 Los contadores serán enteros.
-increment podrá utilizar valores positivos o negativos.
-El contenido debe definir explícitamente si un contador puede quedar debajo de cero.
-Por defecto, los contadores de comportamiento se limitarán a un mínimo de cero.
+set exige un entero igual o mayor que cero.
+increment admite un entero positivo o negativo.
+El resultado runtime se limitará por defecto a un mínimo de cero.
+Las excepciones a esta política quedan fuera de la primera versión.
 11.7. Modificación de relaciones
 type RelationshipValueEffect = {
   type: "relationship_value";
@@ -661,9 +712,22 @@ El resultado se limita entre 0 y 100.
 Si el selector coincide con varias relaciones, el efecto se aplica a todas.
 
 11.8. Creación de relaciones
+type RelationshipCreationDefinition = {
+  id: string;
+  characterId: string;
+  type: RelationshipType;
+  displayName: string;
+
+  affection: number;
+  trust: number;
+  conflict: number;
+
+  tags: string[];
+};
+
 type CreateRelationshipEffect = {
   type: "create_relationship";
-  relationship: Relationship;
+  relationship: RelationshipCreationDefinition;
   conflictPolicy: "error" | "ignore";
 };
 
@@ -672,6 +736,12 @@ Comportamiento:
 error: falla si ya existe el ID.
 ignore: no crea una segunda relación.
 En esta versión no se reemplazará automáticamente una relación existente.
+
+Durante la resolución futura, el motor completará la relación con:
+
+startedAtAge: state.life.age;
+isActive: true;
+isAlive: true.
 
 Los identificadores deben venir definidos por el contenido o derivarse de manera determinista durante la resolución.
 
@@ -706,6 +776,8 @@ type ProbabilisticOutcome = {
 };
 Reglas
 weight debe ser un entero positivo.
+Un resultado debe contener al menos un efecto o al menos un follow-up.
+effects y followUps no pueden estar ambos ausentes o vacíos.
 Los pesos no necesitan sumar 100.
 Primero se filtran los resultados compatibles.
 Después se normalizan sus pesos.
@@ -776,6 +848,9 @@ Una elección se resolverá en este orden:
 Si un paso falla, se devuelve el estado original sin cambios.
 
 14. Consecuencias futuras
+
+FollowUpTrigger representa una definición relativa declarada por el contenido. Todavía no es una consecuencia persistida.
+
 type FollowUpTrigger =
   | {
       type: "turn";
@@ -823,6 +898,8 @@ followUpIndex
 
 El ScheduledEvent definido durante la Etapa 1 deberá adaptarse al sistema formal de condiciones.
 
+FollowUpTrigger es relativo al momento de resolución. ScheduledEvent representa la consecuencia ya programada y persistida, por lo que utiliza valores absolutos.
+
 Debe continuar almacenando:
 
 ID propio;
@@ -837,6 +914,39 @@ estado consumido.
 
 Los triggers relativos deben convertirse al programarse.
 
+ScheduledEvent deberá ser una unión discriminada por triggerType:
+
+type ScheduledEventCommon = {
+  id: string;
+  eventId: string;
+  sourceEventId: string;
+  priority: number;
+  createdAtTurn: number;
+  consumed: boolean;
+};
+
+type ScheduledEvent = ScheduledEventCommon & (
+  | {
+      triggerType: "turn";
+      triggerValue: number;
+    }
+  | {
+      triggerType: "age";
+      triggerValue: number;
+    }
+  | {
+      triggerType: "season";
+      triggerValue: number;
+    }
+  | {
+      triggerType: "condition";
+      conditions: EventConditionGroup;
+    }
+);
+
+Las variantes turn, age y season requieren triggerValue y no admiten conditions.
+La variante condition requiere EventConditionGroup y no admite triggerValue.
+
 Ejemplo:
 
 currentTurn: 8
@@ -845,6 +955,8 @@ afterTurns: 2
 triggerValue: 10
 
 No existe todavía información persistida de producción, por lo que esta adaptación no necesita una migración de datos.
+
+El primer commit técnico del sistema de eventos actualizará GAME_VERSION a "0.2.0". DecisionRecord incorporará eventVersion y ScheduledEvent pasará a ser una unión discriminada, por lo que el formato persistible evoluciona de manera incompatible. No se implementarán migraciones porque no existen partidas persistidas de producción.
 
 16. Políticas de selección
 type EventSelection =
@@ -953,6 +1065,9 @@ migrar contenido en el futuro.
 outcomeId estará ausente cuando la opción no tenga resultados probabilísticos.
 
 20. Resultado de resolución
+
+ChoiceResolution es un diseño futuro. No forma parte del primer commit técnico y todavía no se crearán ChoiceResolutionSchema ni ChoiceResolution.
+
 type ChoiceResolution = {
   previousState: GameState;
   nextState: GameState;
@@ -969,9 +1084,7 @@ type ChoiceResolution = {
   turnAfter: number;
 };
 
-El motor podrá decidir posteriormente si previousState debe formar parte de la respuesta pública o sólo utilizarse en tests y debugging.
-
-En la primera implementación puede conservarse para demostrar inmutabilidad y atomicidad.
+ChoiceResolution se implementará junto con el resolvedor de efectos, después de evolucionar AppliedEffect para representar todas las operaciones reales. En ese momento, el motor decidirá si previousState forma parte de la respuesta pública o sólo se utiliza en tests y debugging.
 
 21. Registro de efectos aplicados
 
@@ -997,6 +1110,17 @@ Ejemplo de registro:
 }
 
 AppliedEffect continuará siendo una representación serializable del cambio realmente realizado.
+
+AppliedEffect se mantendrá sin cambios en el primer commit técnico. Se evolucionará en el commit de resolución de efectos para representar correctamente:
+
+add;
+set;
+multiply;
+clear;
+increment;
+create relationship;
+deactivate relationship;
+schedule event.
 
 22. Almacenamiento del contenido
 
@@ -1212,8 +1336,23 @@ pasar las verificaciones acordadas;
 evitar cambios no relacionados.
 26. Fuera del alcance inmediato
 
+El primer commit técnico incluirá exclusivamente:
+
+tipos y esquemas de eventos;
+condiciones;
+opciones;
+efectos declarativos;
+outcomes;
+follow-ups;
+selección;
+repeat policies;
+evolución de DecisionRecord;
+evolución de ScheduledEvent.
+
 No se implementará en el primer commit técnico:
 
+ChoiceResolution;
+evolución de AppliedEffect;
 evaluador de condiciones;
 aplicación de efectos;
 selección probabilística;
@@ -1224,7 +1363,7 @@ interfaz;
 API;
 base de datos.
 
-El primer commit técnico posterior a esta documentación deberá limitarse a los esquemas y tipos del contrato de acontecimientos.
+El primer commit técnico posterior a esta documentación deberá limitarse a los esquemas y tipos del contrato de acontecimientos y a las evoluciones estructurales persistibles enumeradas. No incluirá evaluación, aplicación, selección runtime ni catálogo.
 
 27. Criterios de aceptación de la especificación
 
@@ -1253,5 +1392,6 @@ git diff --cached --check
 git diff --cached --stat
 git commit -m "AMTR-050826 | docs: define event system functional specification"
 git status
+```
 
 Este commit debe contener únicamente el documento nuevo.

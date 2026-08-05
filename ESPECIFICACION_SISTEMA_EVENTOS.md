@@ -690,8 +690,9 @@ Reglas:
 
 Los contadores serán enteros.
 set exige un entero igual o mayor que cero.
-increment admite un entero positivo o negativo.
-El resultado runtime se limitará por defecto a un mínimo de cero.
+increment admite cualquier entero: negativo, cero o positivo.
+set e increment rechazan valores fraccionarios.
+Durante la futura resolución runtime, el resultado se limitará por defecto a un mínimo de cero. Esa lógica todavía no está implementada.
 Las excepciones a esta política quedan fuera de la primera versión.
 11.7. Modificación de relaciones
 type RelationshipValueEffect = {
@@ -896,7 +897,7 @@ choiceId
 followUpIndex
 15. Evolución de ScheduledEvent
 
-El ScheduledEvent definido durante la Etapa 1 deberá adaptarse al sistema formal de condiciones.
+El ScheduledEvent definido durante la Etapa 1 fue adaptado al sistema formal de condiciones.
 
 FollowUpTrigger es relativo al momento de resolución. ScheduledEvent representa la consecuencia ya programada y persistida, por lo que utiliza valores absolutos.
 
@@ -914,7 +915,7 @@ estado consumido.
 
 Los triggers relativos deben convertirse al programarse.
 
-ScheduledEvent deberá ser una unión discriminada por triggerType:
+ScheduledEvent es una unión discriminada por triggerType:
 
 type ScheduledEventCommon = {
   id: string;
@@ -956,7 +957,7 @@ triggerValue: 10
 
 No existe todavía información persistida de producción, por lo que esta adaptación no necesita una migración de datos.
 
-El primer commit técnico del sistema de eventos actualizará GAME_VERSION a "0.2.0". DecisionRecord incorporará eventVersion y ScheduledEvent pasará a ser una unión discriminada, por lo que el formato persistible evoluciona de manera incompatible. No se implementarán migraciones porque no existen partidas persistidas de producción.
+El primer contrato técnico del sistema de eventos actualizó `GAME_VERSION` a "0.2.0". DecisionRecord incorporó eventVersion y ScheduledEvent pasó a ser una unión discriminada, por lo que el formato persistible evolucionó de manera incompatible. No se implementaron migraciones porque no existen partidas persistidas de producción.
 
 16. Políticas de selección
 type EventSelection =
@@ -1037,7 +1038,7 @@ No se agregará un índice persistido adicional hasta comprobar que es necesario
 
 19. Evolución del historial
 
-DecisionRecord deberá incorporar:
+DecisionRecord incorpora:
 
 type DecisionRecord = {
   eventId: string;
@@ -1063,6 +1064,7 @@ mostrar un resumen histórico;
 migrar contenido en el futuro.
 
 outcomeId estará ausente cuando la opción no tenga resultados probabilísticos.
+eventVersion debe ser un entero positivo y no recibe un valor por defecto silencioso.
 
 20. Resultado de resolución
 
@@ -1160,6 +1162,8 @@ no se incorporará game-content hasta tener finalizado el contrato de eventos.
 Más adelante, el contenido podrá migrarse a JSON o a PostgreSQL sin cambiar el motor.
 
 23. Validación del catálogo
+
+GameEventSchema valida públicamente la estructura declarativa mediante Zod. Rechaza propiedades explícitamente iguales a undefined, referencias circulares y valores no persistibles. Acepta referencias compartidas que no formen un ciclo y no transforma ni muta los datos recibidos. `parse` y `safeParse` conservan el comportamiento estándar de Zod: `parse` lanza `ZodError` ante datos inválidos y `safeParse` devuelve un resultado con `success: false`.
 
 Antes de publicar contenido, el catálogo debe comprobar:
 

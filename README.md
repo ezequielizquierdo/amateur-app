@@ -1,7 +1,7 @@
 # Amateur App
 
-Modelo de dominio y estado inicial de un simulador narrativo de vida y carrera
-futbolística. Esta etapa implementa únicamente bibliotecas TypeScript: no incluye
+Bibliotecas TypeScript para el modelo de dominio y el contrato declarativo de un
+simulador narrativo de vida y carrera futbolística. El proyecto todavía no incluye
 frontend, servidor HTTP ni persistencia externa.
 
 ## Arquitectura
@@ -59,7 +59,10 @@ const state = createInitialGameState({
 ```
 
 Si no se proporciona `initialRelationships`, la partida comienza con un array
-vacío. El motor utiliza internamente `GAME_VERSION`, actualmente `"0.1.0"`.
+vacío. El motor utiliza internamente `GAME_VERSION`, actualmente `"0.2.0"`.
+
+Las versiones `0.1.0` de los `package.json` corresponden a las versiones internas
+de los paquetes y no tienen que coincidir con `GAME_VERSION`.
 
 ## Serializar y reconstruir
 
@@ -80,10 +83,35 @@ import { deserializeGameState } from "@amateur-app/game-engine";
 const restoredState = deserializeGameState(serialized);
 ```
 
-## Limitaciones actuales
+## Estado actual
 
-Esta etapa no implementa API, servidor, frontend, base de datos, persistencia
-externa, autenticación, eventos narrativos, selección o aplicación de eventos,
-avance de turnos o edad, clubes, equipos, contratos, representantes o lesiones
-concretas, IA ni rankings. Tampoco incluye migraciones entre versiones de
+Está implementado:
+
+- modelo de dominio y `GameState`;
+- fábrica determinista del estado inicial;
+- validación y serialización de partidas;
+- contrato declarativo de acontecimientos;
+- condiciones tipadas y efectos declarativos;
+- opciones y resultados probabilísticos declarativos;
+- follow-ups;
+- políticas de selección y repetición;
+- `DecisionRecord` con versión del acontecimiento y outcome opcional;
+- `ScheduledEvent` como unión discriminada de triggers absolutos;
+- `GAME_VERSION = "0.2.0"`.
+
+Todavía no está implementado:
+
+- evaluación de condiciones;
+- aplicación de efectos;
+- resolución de elecciones;
+- selección determinista de outcomes;
+- scheduler runtime;
+- selector del siguiente acontecimiento;
+- catálogo real de acontecimientos;
+- API o servidor HTTP;
+- frontend;
+- base de datos o persistencia externa.
+
+El contrato permite describir y validar acontecimientos como datos, pero el juego
+todavía no puede resolverlos. Tampoco incluye migraciones entre versiones de
 partidas.

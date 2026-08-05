@@ -589,7 +589,9 @@ type AppliedEffect = {
 
 type DecisionRecord = {
   eventId: string;
+  eventVersion: number;
   choiceId: string;
+  outcomeId?: string;
   age: number;
   season: number;
   turn: number;
@@ -610,6 +612,8 @@ type GameHistory = {
   formerClubIds: string[];
 };
 ```
+
+`eventVersion` es un entero positivo obligatorio y no recibe un valor por defecto silencioso. `outcomeId` está ausente cuando la decisión no produjo un resultado probabilístico.
 
 ## Flags
 
@@ -656,41 +660,39 @@ Se recomienda conservar inicialmente los últimos diez acontecimientos.
 # 11. Consecuencias programadas
 
 ```ts
-type ScheduledEventTrigger =
-  | "turn"
-  | "age"
-  | "season"
-  | "condition";
+type EventCondition =
+  | StateCondition
+  | FlagCondition
+  | CounterCondition
+  | RelationshipCondition
+  | EventHistoryCondition;
 
-type EventCondition = {
-  field: string;
-  operator:
-    | "equals"
-    | "notEquals"
-    | "greaterThan"
-    | "greaterThanOrEqual"
-    | "lessThan"
-    | "lessThanOrEqual"
-    | "in"
-    | "notIn";
-  value: JsonValue;
+type EventConditionGroup = {
+  mode: "all" | "any";
+  conditions: EventCondition[];
+  negate?: boolean;
 };
 
-type ScheduledEvent = {
+type ScheduledEventCommon = {
   id: string;
   eventId: string;
-
-  triggerType: ScheduledEventTrigger;
-  triggerValue?: number;
-  conditions?: EventCondition[];
-
   sourceEventId: string;
   priority: number;
-
   createdAtTurn: number;
   consumed: boolean;
 };
+
+type ScheduledEvent = ScheduledEventCommon & (
+  | { triggerType: "turn"; triggerValue: number }
+  | { triggerType: "age"; triggerValue: number }
+  | { triggerType: "season"; triggerValue: number }
+  | { triggerType: "condition"; conditions: EventConditionGroup }
+);
 ```
+
+`EventCondition` es una unión controlada. Las rutas consultables están enumeradas explícitamente y no se admiten paths arbitrarios. Los operadores y sus valores dependen del tipo del campo. Los grupos utilizan `all` o `any`, deben contener al menos una condición y no pueden anidarse en esta versión. El contrato detallado se encuentra en la especificación funcional del sistema de acontecimientos.
+
+`FollowUpDefinition` describe una consecuencia relativa al momento de una futura resolución. `ScheduledEvent` representa esa consecuencia después de programarse y utiliza valores absolutos. Las variantes `turn`, `age` y `season` requieren `triggerValue` y no admiten `conditions`; la variante `condition` requiere `EventConditionGroup` y no admite `triggerValue`.
 
 Las consecuencias programadas permitirán que una decisión tenga efectos posteriores.
 
@@ -737,12 +739,14 @@ type GameState = {
 ## Reglas técnicas
 
 * `runId` identifica la partida.
-* `gameVersion` permite identificar la versión del formato de la partida. En esta etapa el motor utiliza la constante `GAME_VERSION = "0.1.0"` y no recibe la versión desde el llamador.
+* `gameVersion` permite identificar la versión del formato de la partida. En esta etapa el motor utiliza la constante `GAME_VERSION = "0.2.0"` y no recibe la versión desde el llamador.
 * `seed` permitirá reproducir resultados.
 * `currentSeason` comienza en `1`.
 * `currentTurn` comienza en `0`.
 * Una partida finalizada debe tener `endingId`.
 * Una partida activa no debe tener `endingId`.
+
+Las versiones `0.1.0` declaradas actualmente en los `package.json` son versiones internas de los paquetes y no representan necesariamente el valor de `GAME_VERSION` persistido en una partida.
 
 ---
 

@@ -891,7 +891,7 @@ El ID del ScheduledEvent será determinista e incluirá runId, currentTurn, sour
 
 Contrato conceptual del contexto:
 
-type EffectResolutionSource =
+type AppliedEffectSource =
   | { phase: "choice" }
   | { phase: "outcome"; outcomeId: OutcomeId };
 
@@ -899,8 +899,12 @@ type EffectResolutionContext = {
   sourceEventId: EventId;
   sourceEventVersion: number;
   choiceId: ChoiceId;
-  source: EffectResolutionSource;
+  source: AppliedEffectSource;
 };
+
+AppliedEffectSource se reutilizará en EffectResolutionContext y en cada AppliedEffect persistido. En AppliedEffect, sourceEffectIndex será un entero no negativo y representará la posición dentro del array de efectos de esa fase.
+
+La combinación de source.phase, source.outcomeId cuando corresponda y sourceEffectIndex identificará el origen exacto del registro. Esta metadata debe persistirse porque los efectos directos de una opción y los de un outcome pueden resolverse en invocaciones diferentes, y ambos arrays comienzan en el índice cero.
 
 La API pública futura será una única función:
 
@@ -1290,7 +1294,8 @@ La forma actual de AppliedEffect es insuficiente y será reemplazada antes de im
 
 Cada variante incluirá:
 
-sourceEffectIndex;
+source: AppliedEffectSource;
+sourceEffectIndex: entero no negativo;
 status: applied, no_change o ignored;
 campos tipados según la familia;
 operation;
@@ -1298,13 +1303,52 @@ valor solicitado cuando corresponda;
 snapshot anterior;
 snapshot resultante.
 
-Los snapshots de valores utilizarán:
+sourceEffectIndex representa la posición dentro del array de efectos de source.phase. La combinación de phase, outcomeId cuando corresponda e índice permite distinguir efectos de choice y outcome aunque ambos arrays comiencen en cero.
 
-type AppliedValueSnapshot =
+requested conservará el payload exacto del GameEffect original sin repetir type. Conceptualmente:
+
+type EffectPayload<TType extends GameEffect["type"]> =
+  distribución de GameEffect por type,
+  omitiendo el discriminante type.
+
+La transformación TypeScript deberá ser distributiva para conservar las uniones internas de variantes como life_state y football_state. No se utilizará una transformación que colapse sus combinaciones válidas de field, operation y value.
+
+Los snapshots se separarán por clase de dato:
+
+type AppliedScalarValue = boolean | number | string;
+
+type AppliedScalarSnapshot =
   | { exists: false }
-  | { exists: true; value: JsonValue };
+  | { exists: true; value: AppliedScalarValue };
 
-No se utilizará undefined. RelationshipValueEffect generará un registro por relación. La creación conservará la definición solicitada y, cuando se aplique, la relación resultante. La programación conservará tanto FollowUpDefinition como ScheduledEvent. Los registros no_change e ignored formarán parte de immediateEffects.
+type AppliedRelationshipSnapshot =
+  | { exists: false }
+  | { exists: true; value: Relationship };
+
+type AppliedScheduledEventSnapshot =
+  | { exists: false }
+  | { exists: true; value: ScheduledEvent };
+
+player_stat, football_attribute, life_state, football_state, flag, counter y relationship_value utilizarán AppliedScalarSnapshot. create_relationship y deactivate_relationship utilizarán AppliedRelationshipSnapshot. schedule_event utilizará AppliedScheduledEventSnapshot. Esta separación impide persistir objetos o arrays arbitrarios dentro de registros escalares. Ningún snapshot utilizará undefined.
+
+create_relationship será una unión interna discriminada por status:
+
+applied tendrá previous con relación ausente y resulting con la relación completa presente;
+ignored exigirá requested.conflictPolicy igual a ignore y tendrá previous y resulting con una relación existente.
+
+La igualdad real entre los dos snapshots de ignored será responsabilidad del resolvedor.
+
+deactivate_relationship tendrá siempre relaciones completas presentes en previous y resulting. resulting.isActive será false. El resolvedor garantizará la coherencia entre applied, no_change y los valores reales.
+
+relationship_value incluirá relationshipId como campo separado y tipado. Producirá un registro por relación; previous y resulting serán snapshots escalares con números presentes. No utilizará un path libre.
+
+schedule_event sólo admitirá status applied, tendrá previous siempre ausente y resulting con el ScheduledEvent absoluto. requested conservará el FollowUpDefinition relativo.
+
+shared-types validará discriminantes, requested exacto, source, sourceEffectIndex, status permitido, clase de snapshot, propiedades adicionales y valores persistibles. No realizará comparaciones profundas.
+
+game-engine garantizará posteriormente la correspondencia con el efecto real, la igualdad de no_change e ignored, la diferencia de applied, el orden y cantidad de registros, los snapshots reales y la semántica del resultado.
+
+Los únicos exports públicos nuevos de shared-types serán AppliedEffectSchema, AppliedEffect, AppliedEffectSourceSchema y AppliedEffectSource. Los esquemas de status, snapshots, payloads y variantes permanecerán internos.
 
 Este cambio será incompatible y modificará indirectamente DecisionRecord.immediateEffects. El commit técnico que implemente el nuevo esquema elevará GAME_VERSION a "0.3.0". Este commit documental no cambia GAME_VERSION, que continúa temporalmente en "0.2.0". No habrá migración porque no existen partidas persistidas de producción.
 

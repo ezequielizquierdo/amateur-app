@@ -797,6 +797,141 @@ type ScheduleEventEffect = {
 
 Una opción también puede declarar followUps directamente. Ambas formas producen el mismo resultado interno.
 
+11.11. Contrato del resolvedor determinista
+
+El futuro resolvedor aplicará los efectos en el orden exacto del array. Cada efecto leerá el resultado del efecto anterior; no se agruparán ni reordenarán efectos, y varios efectos sobre el mismo campo se acumularán secuencialmente.
+
+La resolución del lote será completamente atómica. Primero se validará el GameState inicial y se creará una copia de trabajo. El estado original nunca se modificará. Durante la aplicación se comprobarán las reglas locales de cada efecto. Al finalizar se recalculará footballLevel y se validará el GameState resultante. Cualquier error descartará la copia de trabajo y todos los cambios del lote.
+
+No se validará el GameState completo después de cada efecto individual, porque una secuencia válida puede atravesar estados temporalmente inconsistentes mientras actualiza campos relacionados.
+
+11.12. Operaciones numéricas
+
+set reemplaza el valor vigente.
+add suma al valor vigente.
+multiply multiplica el valor vigente.
+clear elimina una propiedad opcional; nunca persiste ni asigna undefined.
+
+Un resultado NaN o infinito produce error y rollback. El límite correspondiente se aplica inmediatamente después de cada efecto:
+
+stats modificables: 0–100;
+football attributes: 0–100;
+teamTrust y coachTrust: 0–100;
+reputaciones: 0–100;
+valores de relaciones: 0–100;
+salary y marketValue: mínimo 0, sin máximo;
+contadores: entero con mínimo 0.
+
+Los valores fraccionarios son válidos donde los esquemas persistibles los admiten. Multiplicar por cero es válido. Los multiplicadores negativos están permitidos por el contrato actual y el resultado se limita según el campo. footballLevel no puede modificarse directamente y se recalcula una sola vez después de aplicar el lote.
+
+Para numberOfChildren, set exige un entero no negativo y add utiliza enteros. El resultado debe continuar siendo entero. Un resultado menor que cero produce error y rollback; no se aplica clamp. Ninguna operación sobre numberOfChildren cambia implícitamente relationshipStatus.
+
+11.13. Ausencia de cascadas implícitas
+
+El resolvedor no modifica automáticamente campos relacionados. El contenido debe declarar todos los efectos necesarios. Por ejemplo:
+
+employmentStatus no limpia occupationId ni employerId;
+retirementStatus no limpia equipo, club, contrato ni salario;
+currentInjuryId no modifica automáticamente isInjured;
+limpiar el contrato no modifica el salario.
+
+Sólo se exigen las invariantes ya existentes en GameState al validar el resultado final.
+
+11.14. Flags y contadores
+
+Una flag nueva se crea. Una flag existente puede sobrescribirse si el valor nuevo conserva su tipo. Establecer el mismo valor produce no_change. Cambiar el tipo de una flag existente produce error y rollback. No existe una operación clear para flags.
+
+Una clave de contador ausente se interpreta como cero. set establece el valor e increment suma al valor vigente. El underflow se limita a cero y las claves persistidas con valor cero no se eliminan.
+
+Reglas de presencia:
+
+set 0 sobre una clave ausente crea la propiedad y produce applied;
+increment 0 sobre una clave ausente no crea la propiedad y produce no_change;
+increment negativo sobre una clave ausente queda en cero, no crea la propiedad y produce no_change;
+increment sobre una clave existente conserva la clave aunque el resultado sea cero.
+
+11.15. Estados auditables
+
+Cada efecto válido produce al menos un AppliedEffect auditable con uno de estos estados:
+
+applied: hubo una modificación persistible;
+no_change: el efecto fue válido pero no produjo un cambio persistible;
+ignored: un conflicto fue omitido expresamente por conflictPolicy.
+
+Son ejemplos de no_change: set con el mismo valor, add 0, multiply 1, clear de una propiedad ausente y desactivar una relación ya inactiva. no_change e ignored también forman parte de DecisionRecord.immediateEffects.
+
+11.16. Resolución de relaciones
+
+En RelationshipValueEffect, todos los criterios del selector se combinan con AND y requiredTags exige todos los tags declarados. Se modifican todas las relaciones coincidentes, se conserva el orden original y se genera un AppliedEffect por relación. La ausencia de coincidencias produce error y rollback. Las relaciones inactivas o fallecidas pueden modificarse: no existen filtros implícitos.
+
+CreateRelationshipEffect completa la definición con:
+
+startedAtAge: edad actual;
+isActive: true;
+isAlive: true.
+
+La relación completa se valida y se agrega al final del array. El resolvedor no genera IDs. Un relationshipId duplicado con conflictPolicy error produce rollback. Con conflictPolicy ignore, la resolución continúa sin cambio y registra ignored. Una relación idéntica continúa siendo un conflicto. El modelo actual permite repetir characterId cuando el relationshipId es diferente.
+
+DeactivateRelationshipEffect sólo establece isActive en false. No elimina la relación y conserva isAlive, valores y tags. Una relación ya inactiva produce no_change. Un relationshipId inexistente produce error y rollback.
+
+11.17. Conversión de follow-ups
+
+ScheduleEventEffect convertirá FollowUpDefinition en ScheduledEvent con estas reglas:
+
+turn.afterTurns: state.currentTurn + afterTurns;
+age.atAge: valor absoluto;
+season.atSeason: valor absoluto;
+condition: conserva EventConditionGroup.
+
+afterTurns siempre programa en el futuro. Un atAge menor que la edad actual o un atSeason menor que currentSeason produce TRIGGER_IN_THE_PAST y rollback. Un valor igual a la edad o temporada actual es válido y queda elegible en la próxima evaluación del scheduler. Un acontecimiento programado no se consume recursivamente dentro de la misma resolución.
+
+El ID del ScheduledEvent será determinista e incluirá runId, currentTurn, sourceEventId, sourceEventVersion, choiceId, la phase choice u outcome, outcomeId cuando corresponda y sourceEffectIndex. Los componentes variables se codificarán con su longitud para evitar composiciones ambiguas. No se utilizarán UUID, Math.random, Date ni hashing externo. Un ID duplicado produce error y rollback.
+
+11.18. Contexto y API futura
+
+Contrato conceptual del contexto:
+
+type EffectResolutionSource =
+  | { phase: "choice" }
+  | { phase: "outcome"; outcomeId: OutcomeId };
+
+type EffectResolutionContext = {
+  sourceEventId: EventId;
+  sourceEventVersion: number;
+  choiceId: ChoiceId;
+  source: EffectResolutionSource;
+};
+
+La API pública futura será una única función:
+
+resolveGameEffects(
+  effects,
+  state,
+  context,
+): {
+  nextState;
+  appliedEffects;
+}
+
+El resolvedor de un efecto individual será interno. Un array effects vacío será válido y devolverá una copia equivalente del estado sin registros. La respuesta no incluirá previousState ni scheduledEventIds y este micro-commit no creará ChoiceResolution.
+
+11.19. Errores del resolvedor
+
+La futura clase EventEffectResolutionError expondrá code y, cuando correspondan, effectIndex, effectType y cause.
+
+Códigos iniciales:
+
+INVALID_INPUT;
+INVALID_NUMERIC_RESULT;
+RELATIONSHIP_ID_CONFLICT;
+RELATIONSHIP_NOT_FOUND;
+RELATIONSHIP_SELECTOR_NO_MATCH;
+SCHEDULED_EVENT_ID_CONFLICT;
+TRIGGER_IN_THE_PAST;
+INVALID_RESULT_STATE.
+
+La API lanzará este error y el rollback será total.
+
 12. Resultados probabilísticos
 type ProbabilisticOutcome = {
   id: OutcomeId;
@@ -924,9 +1059,17 @@ currentTurn
 +
 sourceEventId
 +
+sourceEventVersion
++
 choiceId
 +
-followUpIndex
+phase
++
+outcomeId cuando corresponda
++
+sourceEffectIndex
+
+Cada componente variable se codificará junto con su longitud para que la composición no sea ambigua.
 15. Evolución de ScheduledEvent
 
 El ScheduledEvent definido durante la Etapa 1 fue adaptado al sistema formal de condiciones.
@@ -1100,7 +1243,7 @@ eventVersion debe ser un entero positivo y no recibe un valor por defecto silenc
 
 20. Resultado de resolución
 
-ChoiceResolution es un diseño futuro. No forma parte del primer commit técnico y todavía no se crearán ChoiceResolutionSchema ni ChoiceResolution.
+ChoiceResolution es un diseño futuro y no forma parte del resolvedor determinista de efectos. Todavía no se crearán ChoiceResolutionSchema ni ChoiceResolution.
 
 type ChoiceResolution = {
   previousState: GameState;
@@ -1118,7 +1261,7 @@ type ChoiceResolution = {
   turnAfter: number;
 };
 
-ChoiceResolution se implementará junto con el resolvedor de efectos, después de evolucionar AppliedEffect para representar todas las operaciones reales. En ese momento, el motor decidirá si previousState forma parte de la respuesta pública o sólo se utiliza en tests y debugging.
+El resolvedor de efectos devolverá únicamente nextState y appliedEffects. No devolverá previousState ni scheduledEventIds. La forma y el momento de implementación de ChoiceResolution se decidirán en una etapa posterior.
 
 21. Registro de efectos aplicados
 
@@ -1143,18 +1286,27 @@ Ejemplo de registro:
   "resultingValue": 62
 }
 
-AppliedEffect continuará siendo una representación serializable del cambio realmente realizado.
+La forma actual de AppliedEffect es insuficiente y será reemplazada antes de implementar el resolvedor. El nuevo contrato será una unión discriminada por las diez familias originales de GameEffect, no un registro abierto con target o field arbitrario.
 
-AppliedEffect se mantendrá sin cambios en el primer commit técnico. Se evolucionará en el commit de resolución de efectos para representar correctamente:
+Cada variante incluirá:
 
-add;
-set;
-multiply;
-clear;
-increment;
-create relationship;
-deactivate relationship;
-schedule event.
+sourceEffectIndex;
+status: applied, no_change o ignored;
+campos tipados según la familia;
+operation;
+valor solicitado cuando corresponda;
+snapshot anterior;
+snapshot resultante.
+
+Los snapshots de valores utilizarán:
+
+type AppliedValueSnapshot =
+  | { exists: false }
+  | { exists: true; value: JsonValue };
+
+No se utilizará undefined. RelationshipValueEffect generará un registro por relación. La creación conservará la definición solicitada y, cuando se aplique, la relación resultante. La programación conservará tanto FollowUpDefinition como ScheduledEvent. Los registros no_change e ignored formarán parte de immediateEffects.
+
+Este cambio será incompatible y modificará indirectamente DecisionRecord.immediateEffects. El commit técnico que implemente el nuevo esquema elevará GAME_VERSION a "0.3.0". Este commit documental no cambia GAME_VERSION, que continúa temporalmente en "0.2.0". No habrá migración porque no existen partidas persistidas de producción.
 
 22. Almacenamiento del contenido
 

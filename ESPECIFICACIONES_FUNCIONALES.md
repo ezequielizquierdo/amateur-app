@@ -823,6 +823,36 @@ function clampStat(value: number): number {
 
 Ningún módulo debe modificar estadísticas sin asegurar el rango válido.
 
+## Contrato del futuro resolvedor de efectos
+
+Los efectos se aplicarán en el orden exacto del array y cada uno leerá el resultado del anterior. No se agruparán ni reordenarán. La resolución será atómica sobre una copia de trabajo: se validará el estado inicial, se comprobarán reglas locales durante la aplicación, se recalculará `footballLevel` al terminar y se validará el estado final. Un error descartará todo el lote y el `GameState` original nunca será modificado. No se validará el estado completo entre efectos porque una transición coordinada puede ser temporalmente inconsistente.
+
+`set` reemplaza, `add` suma, `multiply` multiplica y `clear` elimina una propiedad opcional sin asignar `undefined`. Un resultado `NaN` o infinito será un error. El clamp se aplicará después de cada efecto: las escalas de estadísticas, atributos, confianza, reputación y relaciones quedan entre `0` y `100`; `salary` y `marketValue` tienen mínimo `0` sin máximo; los contadores son enteros con mínimo `0`. Los valores fraccionarios son válidos donde el esquema persistible los admite, multiplicar por cero es válido y los multiplicadores negativos se limitan según el campo. `footballLevel` no se modifica directamente.
+
+`numberOfChildren` sólo admite `set` con entero no negativo o `add` con entero. Un resultado negativo produce error y rollback, sin clamp ni cambios implícitos sobre `relationshipStatus`.
+
+El resolvedor no producirá cascadas implícitas. Cambiar `employmentStatus` no limpia ocupación o empleador; cambiar `retirementStatus` no limpia equipo, club, contrato o salario; cambiar `currentInjuryId` no ajusta `isInjured`; y limpiar un contrato no cambia el salario. El contenido debe declarar todos los efectos necesarios y el resultado final debe cumplir las invariantes existentes de `GameState`.
+
+Las flags nuevas se crean y las existentes sólo pueden sobrescribirse conservando su tipo; el mismo valor produce `no_change` y un cambio de tipo produce error. No existe `clear` para flags. Un contador ausente parte de cero. `set` persiste incluso un cero nuevo; `increment` cero o negativo sobre una clave ausente que permanece en cero produce `no_change` sin crearla; una clave ya existente se conserva aunque termine en cero.
+
+Cada efecto producirá un registro auditable con estado `applied`, `no_change` o `ignored`. `ignored` se reserva para un conflicto omitido expresamente por `conflictPolicy`. Los tres estados formarán parte de `DecisionRecord.immediateEffects`.
+
+Los selectores de `RelationshipValueEffect` combinan sus criterios con AND, exigen todos los `requiredTags` y modifican todas las relaciones coincidentes sin alterar su orden, con un registro por relación. No encontrar coincidencias es un error. No se filtran implícitamente relaciones inactivas o fallecidas.
+
+Al crear una relación se completan `startedAtAge` con la edad actual, `isActive: true` e `isAlive: true`, se valida la relación completa y se agrega al final. El resolvedor no genera IDs. Un ID duplicado produce error o un registro `ignored` según `conflictPolicy`; incluso una relación idéntica es un conflicto. Un `characterId` puede repetirse con otro ID. Desactivar sólo establece `isActive: false`; una relación ya inactiva produce `no_change` y un ID inexistente produce error.
+
+Los follow-ups de turno se convierten a `currentTurn + afterTurns`; edad y temporada son valores absolutos; y una condición conserva su `EventConditionGroup`. Edad o temporada pasadas producen error. Un valor igual al actual es válido y queda elegible en la próxima evaluación del scheduler. No se consume recursivamente un evento programado durante la misma resolución.
+
+El ID programado será determinista e incluirá, con codificación de longitud no ambigua, `runId`, `currentTurn`, `sourceEventId`, `sourceEventVersion`, `choiceId`, la fase `choice` u `outcome`, `outcomeId` cuando corresponda y `sourceEffectIndex`. No utilizará UUID, `Math.random`, `Date` ni hashing externo. Una colisión produce error y rollback.
+
+La futura API pública será una única función `resolveGameEffects(effects, state, context)` que devolverá `nextState` y `appliedEffects`. Aceptará un lote vacío y devolverá una copia equivalente sin registros. El resolvedor individual será interno; no se devolverán `previousState` ni `scheduledEventIds`, y no se creará `ChoiceResolution` en este micro-commit.
+
+La forma actual de `AppliedEffect` es insuficiente. Antes de implementar el resolvedor será reemplazada por una unión discriminada según las diez familias de `GameEffect`, con `sourceEffectIndex`, `status`, campos y operación tipados, valor solicitado cuando corresponda y snapshots anterior y resultante. Un snapshot será `{ exists: false }` o `{ exists: true; value: JsonValue }`; no utilizará `undefined`. La creación conservará definición y relación resultante, la programación conservará `FollowUpDefinition` y `ScheduledEvent`, y un efecto sobre varias relaciones producirá un registro por cada una.
+
+La API futura lanzará `EventEffectResolutionError`, con `code` y campos opcionales `effectIndex`, `effectType` y `cause`. Los códigos iniciales serán `INVALID_INPUT`, `INVALID_NUMERIC_RESULT`, `RELATIONSHIP_ID_CONFLICT`, `RELATIONSHIP_NOT_FOUND`, `RELATIONSHIP_SELECTOR_NO_MATCH`, `SCHEDULED_EVENT_ID_CONFLICT`, `TRIGGER_IN_THE_PAST` e `INVALID_RESULT_STATE`. Todo error implica rollback total.
+
+La evolución de `AppliedEffect` cambiará indirectamente `DecisionRecord.immediateEffects` y requerirá elevar `GAME_VERSION` a `"0.3.0"` en el futuro commit técnico. En este cambio documental `GAME_VERSION` continúa en `"0.2.0"`. No se prevé una migración porque no existen partidas persistidas de producción.
+
 ## Intensidades narrativas
 
 ```ts

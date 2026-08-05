@@ -97,12 +97,14 @@ Está implementado:
 - políticas de selección y repetición;
 - `DecisionRecord` con versión del acontecimiento y outcome opcional;
 - `ScheduledEvent` como unión discriminada de triggers absolutos;
+- contrato funcional y técnico del futuro resolvedor determinista de efectos;
 - `GAME_VERSION = "0.2.0"`.
 
 Todavía no está implementado:
 
 - evaluación de condiciones;
 - aplicación de efectos;
+- evolución de `AppliedEffect` para auditar todas las familias de efectos;
 - resolución de elecciones;
 - selección determinista de outcomes;
 - scheduler runtime;
@@ -115,3 +117,9 @@ Todavía no está implementado:
 El contrato permite describir y validar acontecimientos como datos, pero el juego
 todavía no puede resolverlos. Tampoco incluye migraciones entre versiones de
 partidas.
+
+Las reglas de orden secuencial, atomicidad, operaciones numéricas, relaciones,
+follow-ups, auditoría y errores del resolvedor ya están definidas. El resolvedor
+todavía no está implementado, `AppliedEffect` conserva temporalmente su forma
+actual y `GAME_VERSION` continúa en `"0.2.0"` hasta el commit técnico que haga
+evolucionar el formato persistible.

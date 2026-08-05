@@ -1,7 +1,10 @@
-import { GameStateSchema, type GameState } from "@amateur-app/shared-types";
+import {
+  assertNoExplicitUndefined,
+  GameStateSchema,
+  type GameState,
+} from "@amateur-app/shared-types";
 
 import { calculateFootballLevel } from "../calculations/calculate-football-level.js";
-import { assertNoExplicitUndefined } from "./assert-no-explicit-undefined.js";
 
 export function validateGameState(value: unknown): GameState {
   assertNoExplicitUndefined(value);

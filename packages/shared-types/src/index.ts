@@ -9,4 +9,5 @@ export * from "./schemas/profile.schema.js";
 export * from "./schemas/relationship.schema.js";
 export * from "./schemas/scheduled-event.schema.js";
 export * from "./schemas/stats.schema.js";
+export { assertNoExplicitUndefined } from "./validation/assert-no-explicit-undefined.js";
 export type * from "./types.js";

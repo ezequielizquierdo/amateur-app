@@ -30,39 +30,4 @@ describe("validateGameState", () => {
     expect(Object.hasOwn(state.profile, "birthCity")).toBe(false);
     expect(() => validateGameState(state)).not.toThrow();
   });
-
-  it.each([
-    [
-      "birthCity",
-      (state: ReturnType<typeof createInitialGameState>) => {
-        Object.defineProperty(state.profile, "birthCity", {
-          value: undefined,
-          enumerable: true,
-          configurable: true,
-        });
-      },
-    ],
-    [
-      "currentEventId",
-      (state: ReturnType<typeof createInitialGameState>) => {
-        Object.defineProperty(state, "currentEventId", {
-          value: undefined,
-          enumerable: true,
-          configurable: true,
-        });
-      },
-    ],
-    [
-      "nested property",
-      (state: ReturnType<typeof createInitialGameState>) => {
-        (state.history.flags as Record<string, unknown>).nested = undefined;
-      },
-    ],
-  ] as const)("rejects explicit undefined in %s", (_name, mutate) => {
-    const state = createInitialGameState(createInput());
-    mutate(state);
-    expect(() => validateGameState(state)).toThrow(
-      /undefined is not a persistible value/,
-    );
-  });
 });

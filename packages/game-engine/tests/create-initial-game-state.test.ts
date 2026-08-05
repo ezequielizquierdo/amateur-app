@@ -31,6 +31,8 @@ describe("createInitialGameState", () => {
     expect(state.currentSeason).toBe(1);
     expect(state.currentTurn).toBe(0);
     expect(state.status).toBe("active");
+    expect(state.history.decisions).toEqual([]);
+    expect(state.scheduledEvents).toEqual([]);
   });
 
   it("produces exactly the same state for the same input", () => {
@@ -54,8 +56,8 @@ describe("createInitialGameState", () => {
   });
 
   it("always uses the controlled game version", () => {
-    expect(GAME_VERSION).toBe("0.1.0");
-    expect(createInitialGameState(createInput()).gameVersion).toBe("0.1.0");
+    expect(GAME_VERSION).toBe("0.2.0");
+    expect(createInitialGameState(createInput()).gameVersion).toBe("0.2.0");
   });
 
   it("does not invoke clock or randomness sources", () => {

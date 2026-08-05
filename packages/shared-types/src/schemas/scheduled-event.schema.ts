@@ -4,7 +4,8 @@ import {
   NonEmptyStringSchema,
   NonNegativeIntegerSchema,
 } from "./common.schema.js";
-import { JsonValueSchema } from "./json-value.schema.js";
+import { EventConditionGroupSchema } from "./events/conditions.schema.js";
+import { EventIdSchema } from "./events/event-common.schema.js";
 
 export const ScheduledEventTriggerSchema = z.enum([
   "turn",
@@ -13,33 +14,42 @@ export const ScheduledEventTriggerSchema = z.enum([
   "condition",
 ]);
 
-export const EventConditionSchema = z
-  .object({
-    field: NonEmptyStringSchema,
-    operator: z.enum([
-      "equals",
-      "notEquals",
-      "greaterThan",
-      "greaterThanOrEqual",
-      "lessThan",
-      "lessThanOrEqual",
-      "in",
-      "notIn",
-    ]),
-    value: JsonValueSchema,
-  })
-  .strict();
+const ScheduledEventCommonShape = {
+  id: NonEmptyStringSchema,
+  eventId: EventIdSchema,
+  sourceEventId: EventIdSchema,
+  priority: z.number().int(),
+  createdAtTurn: NonNegativeIntegerSchema,
+  consumed: z.boolean(),
+} as const;
 
-export const ScheduledEventSchema = z
-  .object({
-    id: NonEmptyStringSchema,
-    eventId: NonEmptyStringSchema,
-    triggerType: ScheduledEventTriggerSchema,
-    triggerValue: z.number().finite().optional(),
-    conditions: z.array(EventConditionSchema).optional(),
-    sourceEventId: NonEmptyStringSchema,
-    priority: z.number().int(),
-    createdAtTurn: NonNegativeIntegerSchema,
-    consumed: z.boolean(),
-  })
-  .strict();
+export const ScheduledEventSchema = z.discriminatedUnion("triggerType", [
+  z
+    .object({
+      ...ScheduledEventCommonShape,
+      triggerType: z.literal("turn"),
+      triggerValue: NonNegativeIntegerSchema,
+    })
+    .strict(),
+  z
+    .object({
+      ...ScheduledEventCommonShape,
+      triggerType: z.literal("age"),
+      triggerValue: z.number().int().min(14),
+    })
+    .strict(),
+  z
+    .object({
+      ...ScheduledEventCommonShape,
+      triggerType: z.literal("season"),
+      triggerValue: z.number().int().min(1),
+    })
+    .strict(),
+  z
+    .object({
+      ...ScheduledEventCommonShape,
+      triggerType: z.literal("condition"),
+      conditions: EventConditionGroupSchema,
+    })
+    .strict(),
+]);

@@ -5,6 +5,11 @@ import {
   NonNegativeIntegerSchema,
 } from "./common.schema.js";
 import { JsonValueSchema } from "./json-value.schema.js";
+import {
+  ChoiceIdSchema,
+  EventIdSchema,
+  OutcomeIdSchema,
+} from "./events/event-common.schema.js";
 
 export const AppliedEffectSchema = z
   .object({
@@ -18,8 +23,10 @@ export const AppliedEffectSchema = z
 
 export const DecisionRecordSchema = z
   .object({
-    eventId: NonEmptyStringSchema,
-    choiceId: NonEmptyStringSchema,
+    eventId: EventIdSchema,
+    eventVersion: z.number().int().positive(),
+    choiceId: ChoiceIdSchema,
+    outcomeId: OutcomeIdSchema.optional(),
     age: NonNegativeIntegerSchema,
     season: NonNegativeIntegerSchema,
     turn: NonNegativeIntegerSchema,

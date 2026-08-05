@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { ScheduledEventSchema } from "@amateur-app/shared-types";
 
 import {
   createInitialGameState,
@@ -17,8 +18,9 @@ describe("game-state serialization", () => {
   it("round-trips nested JsonValue fields", () => {
     const state = createInitialGameState(createInput());
     state.history.decisions.push({
-      eventId: "event-1",
-      choiceId: "choice-1",
+      eventId: "event_1",
+      eventVersion: 1,
+      choiceId: "choice_1",
       age: 14,
       season: 1,
       turn: 0,
@@ -34,6 +36,44 @@ describe("game-state serialization", () => {
     });
 
     expect(deserializeGameState(serializeGameState(state))).toEqual(state);
+  });
+
+  it.each([
+    { triggerType: "turn", triggerValue: 2 },
+    { triggerType: "age", triggerValue: 18 },
+    { triggerType: "season", triggerValue: 2 },
+    {
+      triggerType: "condition",
+      conditions: {
+        mode: "all",
+        conditions: [
+          { type: "flag", key: "ready", operator: "equals", value: true },
+        ],
+      },
+    },
+  ])("round-trips a scheduled $triggerType event", (trigger) => {
+    const state = createInitialGameState(createInput());
+    const scheduledEvent = ScheduledEventSchema.parse({
+      id: `scheduled-${trigger.triggerType}`,
+      eventId: "next_event",
+      sourceEventId: "source_event",
+      priority: 1,
+      createdAtTurn: 0,
+      consumed: false,
+      ...trigger,
+    });
+    state.scheduledEvents.push(scheduledEvent);
+
+    const serialized = serializeGameState(state);
+    const restored = deserializeGameState(serialized);
+
+    expect(serialized).toBeTypeOf("string");
+    expect(restored.scheduledEvents).toEqual([scheduledEvent]);
+    if (scheduledEvent.triggerType === "condition") {
+      expect(scheduledEvent).not.toHaveProperty("triggerValue");
+    } else {
+      expect(scheduledEvent).not.toHaveProperty("conditions");
+    }
   });
 
   it("rejects malformed JSON with a comprehensible error", () => {

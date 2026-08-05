@@ -405,6 +405,26 @@ Ejemplo:
   "operator": "equals",
   "value": true
 }
+
+La existencia de una flag se comprueba como propiedad propia de `state.history.flags`, mediante la semántica de `Object.hasOwn(flags, key)`. No se utiliza truthiness.
+
+Reglas:
+
+exists es verdadero cuando la clave existe como propiedad propia.
+notExists es verdadero cuando la clave no existe como propiedad propia.
+equals requiere que la clave exista y que su valor sea estrictamente igual al valor esperado.
+notEquals requiere que la clave exista y que su valor sea estrictamente diferente al valor esperado.
+Una clave ausente produce false tanto para equals como para notEquals. Para consultar ausencia deben utilizarse exists o notExists.
+false, 0 y el string vacío son valores presentes.
+Las comparaciones no realizan coerción, trim ni normalización.
+
+Ejemplos resumidos:
+
+| Estado de la flag | exists | notExists | equals false | notEquals false |
+| --- | --- | --- | --- | --- |
+| ausente | false | true | false | false |
+| presente con false | true | false | true | false |
+
 9.4. Condiciones sobre contadores
 type CounterCondition = {
   type: "counter";
@@ -428,7 +448,7 @@ Ejemplo:
   "value": 2
 }
 
-Un contador inexistente se interpretará como 0 para los operadores numéricos.
+Un contador inexistente se interpretará como 0 para los operadores numéricos. Esta política es diferente de la aplicada a las flags: la existencia de una flag y el valor por defecto de un contador no deben compartir accidentalmente la misma implementación.
 
 9.5. Condiciones sobre relaciones
 type RelationshipSelector = {
@@ -514,6 +534,18 @@ Reglas:
 completedAtLeast requiere count.
 count debe ser un entero positivo.
 Los demás operadores no deben recibir count.
+
+EventHistoryCondition utiliza exclusivamente `history.decisions` como fuente de verdad para la evaluación. Se cuentan los DecisionRecord cuyo eventId coincide mediante igualdad estricta.
+
+completed es verdadero cuando count es igual o mayor que 1.
+notCompleted es verdadero cuando count es igual a 0.
+completedAtLeast es verdadero cuando count es igual o mayor que condition.count.
+
+Cada DecisionRecord coincidente cuenta como una resolución y varias resoluciones del mismo eventId cuentan por separado. eventVersion, choiceId y outcomeId no modifican el conteo.
+
+`history.completedEventIds` no será consultado por EventHistoryCondition. El campo permanece en el modelo actual, pero su posible derivación, sincronización o eliminación futura está fuera del alcance de este micro-commit. No debe combinarse con `history.decisions`, porque una divergencia entre ambas colecciones podría producir resultados contradictorios.
+
+Estas reglas describen el contrato funcional del evaluador futuro. Todavía no se implementan la evaluación runtime de condiciones, la selección de eventos, la aplicación de efectos, la resolución de opciones, el scheduler ni el azar.
 10. Opciones
 type EventChoice = {
   id: ChoiceId;

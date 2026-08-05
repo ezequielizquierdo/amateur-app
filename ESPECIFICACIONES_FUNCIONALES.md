@@ -692,6 +692,14 @@ type ScheduledEvent = ScheduledEventCommon & (
 
 `EventCondition` es una unión controlada. Las rutas consultables están enumeradas explícitamente y no se admiten paths arbitrarios. Los operadores y sus valores dependen del tipo del campo. Los grupos utilizan `all` o `any`, deben contener al menos una condición y no pueden anidarse en esta versión. El contrato detallado se encuentra en la especificación funcional del sistema de acontecimientos.
 
+Para las condiciones sobre flags, `exists` y `notExists` consultan si la clave es una propiedad propia de `history.flags`. `equals` y `notEquals` requieren que la clave exista; por lo tanto, una flag ausente produce false para ambas comparaciones de valor. Los valores false, 0 y string vacío se consideran presentes. No se utiliza truthiness, coerción, trim ni normalización.
+
+Los contadores ausentes se interpretan como 0. Esta regla es específica de los contadores y no debe confundirse con la semántica de existencia de las flags.
+
+`EventHistoryCondition` utiliza exclusivamente `history.decisions`. Cuenta cada DecisionRecord cuyo eventId coincida mediante igualdad estricta: `completed` exige al menos uno, `notCompleted` exige cero y `completedAtLeast` compara el total con el count solicitado. Cada registro coincidente cuenta por separado; eventVersion, choiceId y outcomeId no alteran el conteo. `history.completedEventIds` permanece en el modelo, pero no se consulta ni se combina con decisions para esta evaluación. Su posible derivación, sincronización o eliminación futura queda fuera de este micro-commit.
+
+Estas reglas corresponden al contrato funcional del evaluador futuro. La evaluación runtime de condiciones, la selección de eventos, la aplicación de efectos, la resolución de opciones, el scheduler y el azar todavía no están implementados.
+
 `FollowUpDefinition` describe una consecuencia relativa al momento de una futura resolución. `ScheduledEvent` representa esa consecuencia después de programarse y utiliza valores absolutos. Las variantes `turn`, `age` y `season` requieren `triggerValue` y no admiten `conditions`; la variante `condition` requiere `EventConditionGroup` y no admite `triggerValue`.
 
 Las consecuencias programadas permitirán que una decisión tenga efectos posteriores.

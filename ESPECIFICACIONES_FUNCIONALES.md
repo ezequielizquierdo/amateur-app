@@ -579,13 +579,21 @@ type JsonValue =
   | JsonValue[]
   | { [key: string]: JsonValue };
 
-type AppliedEffect = {
-  field: string;
-  operation: "add" | "set" | "multiply";
-  previousValue?: JsonValue;
-  appliedValue: JsonValue;
-  resultingValue?: JsonValue;
-};
+type AppliedEffectSource =
+  | { phase: "choice" }
+  | { phase: "outcome"; outcomeId: string };
+
+type AppliedEffect =
+  | AppliedPlayerStatEffect
+  | AppliedFootballAttributeEffect
+  | AppliedLifeStateEffect
+  | AppliedFootballStateEffect
+  | AppliedFlagEffect
+  | AppliedCounterEffect
+  | AppliedRelationshipValueEffect
+  | AppliedCreateRelationshipEffect
+  | AppliedDeactivateRelationshipEffect
+  | AppliedScheduleEventEffect;
 
 type DecisionRecord = {
   eventId: string;
@@ -614,6 +622,10 @@ type GameHistory = {
 ```
 
 `eventVersion` es un entero positivo obligatorio y no recibe un valor por defecto silencioso. `outcomeId` está ausente cuando la decisión no produjo un resultado probabilístico.
+
+`AppliedEffect` es una unión discriminada estricta por las diez familias de `GameEffect`. Cada registro conserva `source`, `sourceEffectIndex`, `status`, el payload solicitado en `requested` sin repetir `type`, y snapshots anterior y resultante tipados para su familia. No admite `target`, paths ni campos arbitrarios. Las variantes internas de `life_state` y `football_state` mantienen correlacionados `field`, `operation` y `value`.
+
+Los snapshots escalares sólo admiten `boolean`, números finitos o `string`; los snapshots de relaciones contienen una `Relationship` completa y los de programación un `ScheduledEvent`. La ausencia se representa con `{ exists: false }`, nunca con `undefined`. `DecisionRecord.immediateEffects` requiere esta forma persistible; la forma abierta anterior ya no es válida.
 
 ## Flags
 
@@ -747,7 +759,7 @@ type GameState = {
 ## Reglas técnicas
 
 * `runId` identifica la partida.
-* `gameVersion` permite identificar la versión del formato de la partida. En esta etapa el motor utiliza la constante `GAME_VERSION = "0.2.0"` y no recibe la versión desde el llamador.
+* `gameVersion` permite identificar la versión del formato de la partida. En esta etapa el motor utiliza la constante `GAME_VERSION = "0.3.0"` y no recibe la versión desde el llamador.
 * `seed` permitirá reproducir resultados.
 * `currentSeason` comienza en `1`.
 * `currentTurn` comienza en `0`.
@@ -847,21 +859,23 @@ El ID programado será determinista e incluirá, con codificación de longitud n
 
 La futura API pública será una única función `resolveGameEffects(effects, state, context)` que devolverá `nextState` y `appliedEffects`. Aceptará un lote vacío y devolverá una copia equivalente sin registros. El resolvedor individual será interno; no se devolverán `previousState` ni `scheduledEventIds`, y no se creará `ChoiceResolution` en este micro-commit.
 
-La forma actual de `AppliedEffect` es insuficiente. Antes de implementar el resolvedor será reemplazada por una unión discriminada según las diez familias de `GameEffect`, con `source: AppliedEffectSource`, `sourceEffectIndex` entero no negativo, `status`, campos y operación tipados, valor solicitado cuando corresponda y snapshots anterior y resultante. `AppliedEffectSource` distingue la fase `choice` de la fase `outcome`, que además requiere `outcomeId`; junto con el índice dentro del array de esa fase identifica el origen aun cuando ambos arrays comiencen en cero. Esta misma unión se reutilizará posteriormente en `EffectResolutionContext`.
+`AppliedEffect` ya es una unión discriminada según las diez familias de `GameEffect`, con `source: AppliedEffectSource`, `sourceEffectIndex` entero no negativo, `status`, payload solicitado y snapshots anterior y resultante tipados. `AppliedEffectSource` distingue la fase `choice` de la fase `outcome`, que además requiere `outcomeId`; junto con el índice dentro del array de esa fase identifica el origen aun cuando ambos arrays comiencen en cero. Esta misma unión se reutilizará posteriormente en `EffectResolutionContext`.
 
-`requested` conservará el payload exacto del `GameEffect` original sin repetir `type`. Su obtención deberá distribuir la unión por `type` y preservar las variantes internas de `life_state` y `football_state`, sin colapsar sus combinaciones válidas.
+`requested` conserva el payload exacto del `GameEffect` original sin repetir `type`. Su obtención distribuye la unión por `type` y preserva las variantes internas de `life_state` y `football_state`, sin colapsar sus combinaciones válidas de campo, operación y valor.
 
-Los registros escalares de `player_stat`, `football_attribute`, `life_state`, `football_state`, `flag`, `counter` y `relationship_value` sólo admitirán snapshots ausentes o presentes con `boolean`, `number` o `string`. La creación y desactivación utilizarán snapshots ausentes o presentes con una `Relationship` completa. La programación utilizará snapshots ausentes o presentes con un `ScheduledEvent`. No se admitirán objetos o arrays arbitrarios en snapshots escalares ni se utilizará `undefined`.
+Los registros escalares de `player_stat`, `football_attribute`, `life_state`, `football_state`, `flag`, `counter` y `relationship_value` sólo admiten snapshots ausentes o presentes con `boolean`, número finito o `string`. La creación y desactivación utilizan snapshots ausentes o presentes con una `Relationship` completa. La programación utiliza snapshots ausentes o presentes con un `ScheduledEvent`. No se admiten objetos o arrays arbitrarios en snapshots escalares ni se utiliza `undefined`.
 
-`create_relationship` será una unión interna: `applied` tendrá una relación anterior ausente y una relación completa resultante; `ignored` exigirá `conflictPolicy: "ignore"` y relaciones existentes en ambos snapshots. `deactivate_relationship` conservará relaciones completas en ambos snapshots y la resultante tendrá `isActive: false`. `relationship_value` incluirá un `relationshipId` tipado, generará un registro por relación y utilizará números presentes sin paths libres. `schedule_event` sólo admitirá `applied`, con snapshot anterior ausente, `FollowUpDefinition` relativo en `requested` y `ScheduledEvent` absoluto como resultado.
+Las siete familias escalares admiten `applied` y `no_change`; `create_relationship` admite `applied` e `ignored`; `deactivate_relationship` admite `applied` y `no_change`; y `schedule_event` sólo admite `applied`.
 
-`shared-types` validará la estructura, discriminantes, payload solicitado, origen, índice, status, clase de snapshot, propiedades adicionales y persistibilidad, sin realizar comparaciones profundas. `game-engine` garantizará después la correspondencia con el efecto, la igualdad de `no_change` e `ignored`, la diferencia de `applied`, el orden, la cantidad de registros, los snapshots reales y la semántica del resultado.
+`create_relationship` es una unión interna: `applied` tiene una relación anterior ausente y una relación completa resultante; `ignored` exige `conflictPolicy: "ignore"` y relaciones existentes en ambos snapshots. `deactivate_relationship` conserva relaciones completas en ambos snapshots y la resultante tiene `isActive: false`. `relationship_value` incluye un `relationshipId` tipado y utiliza números presentes sin paths libres; el futuro resolvedor generará un registro por cada relación modificada. `schedule_event` sólo admite `applied`, con snapshot anterior ausente, `FollowUpDefinition` relativo en `requested` y `ScheduledEvent` absoluto como resultado.
 
-Los únicos exports públicos nuevos serán `AppliedEffectSchema`, `AppliedEffect`, `AppliedEffectSourceSchema` y `AppliedEffectSource`. Los esquemas auxiliares de status, snapshots, payloads y variantes permanecerán internos.
+`shared-types` valida la estructura, discriminantes, payload solicitado, origen, índice, status, clase de snapshot, propiedades adicionales y persistibilidad, sin realizar comparaciones profundas. `game-engine` garantizará después la correspondencia con el efecto, la igualdad de `no_change` e `ignored`, la diferencia de `applied`, el orden, la cantidad de registros, los snapshots reales y la semántica del resultado.
+
+Los únicos exports públicos de este contrato son `AppliedEffectSchema`, `AppliedEffect`, `AppliedEffectSourceSchema` y `AppliedEffectSource`. Los esquemas auxiliares de status, snapshots, payloads y variantes permanecen internos.
 
 La API futura lanzará `EventEffectResolutionError`, con `code` y campos opcionales `effectIndex`, `effectType` y `cause`. Los códigos iniciales serán `INVALID_INPUT`, `INVALID_NUMERIC_RESULT`, `RELATIONSHIP_ID_CONFLICT`, `RELATIONSHIP_NOT_FOUND`, `RELATIONSHIP_SELECTOR_NO_MATCH`, `SCHEDULED_EVENT_ID_CONFLICT`, `TRIGGER_IN_THE_PAST` e `INVALID_RESULT_STATE`. Todo error implica rollback total.
 
-La evolución de `AppliedEffect` cambiará indirectamente `DecisionRecord.immediateEffects` y requerirá elevar `GAME_VERSION` a `"0.3.0"` en el futuro commit técnico. En este cambio documental `GAME_VERSION` continúa en `"0.2.0"`. No se prevé una migración porque no existen partidas persistidas de producción.
+La evolución de `AppliedEffect` cambió de forma incompatible `DecisionRecord.immediateEffects` y elevó `GAME_VERSION` a `"0.3.0"`. No se implementó una migración porque no existen partidas persistidas de producción. Las versiones de los paquetes son independientes de `GAME_VERSION`.
 
 ## Intensidades narrativas
 

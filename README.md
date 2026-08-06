@@ -59,7 +59,7 @@ const state = createInitialGameState({
 ```
 
 Si no se proporciona `initialRelationships`, la partida comienza con un array
-vacío. El motor utiliza internamente `GAME_VERSION`, actualmente `"0.2.0"`.
+vacío. El motor utiliza internamente `GAME_VERSION`, actualmente `"0.3.0"`.
 
 Las versiones `0.1.0` de los `package.json` corresponden a las versiones internas
 de los paquetes y no tienen que coincidir con `GAME_VERSION`.
@@ -95,16 +95,19 @@ Está implementado:
 - opciones y resultados probabilísticos declarativos;
 - follow-ups;
 - políticas de selección y repetición;
-- `DecisionRecord` con versión del acontecimiento y outcome opcional;
+- evaluación pura y determinista de condiciones;
+- `AppliedEffect` como unión persistible estricta de las diez familias de efectos;
+- origen e índice de cada efecto aplicado, payload solicitado y snapshots tipados;
+- `DecisionRecord` con versión del acontecimiento, outcome opcional e `immediateEffects` evolucionado;
 - `ScheduledEvent` como unión discriminada de triggers absolutos;
 - contrato funcional y técnico del futuro resolvedor determinista de efectos;
-- `GAME_VERSION = "0.2.0"`.
+- `GAME_VERSION = "0.3.0"`.
 
 Todavía no está implementado:
 
-- evaluación de condiciones;
-- aplicación de efectos;
-- evolución de `AppliedEffect` para auditar todas las familias de efectos;
+- `resolveGameEffects` y la aplicación runtime de efectos;
+- atomicidad, rollback y errores runtime del resolvedor;
+- conversión runtime de follow-ups en `ScheduledEvent`;
 - resolución de elecciones;
 - selección determinista de outcomes;
 - scheduler runtime;
@@ -119,7 +122,8 @@ todavía no puede resolverlos. Tampoco incluye migraciones entre versiones de
 partidas.
 
 Las reglas de orden secuencial, atomicidad, operaciones numéricas, relaciones,
-follow-ups, auditoría y errores del resolvedor ya están definidas. El resolvedor
-todavía no está implementado, `AppliedEffect` conserva temporalmente su forma
-actual y `GAME_VERSION` continúa en `"0.2.0"` hasta el commit técnico que haga
-evolucionar el formato persistible.
+follow-ups, auditoría y errores del resolvedor ya están definidas. El contrato
+persistible de `AppliedEffect` ya está implementado, pero el resolvedor todavía
+no existe y el juego no puede aplicar efectos ni resolver acontecimientos.
+La evolución incompatible elevó `GAME_VERSION` a `"0.3.0"`; no se implementaron
+migraciones porque no existen partidas persistidas de producción.

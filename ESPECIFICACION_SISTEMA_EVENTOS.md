@@ -902,7 +902,7 @@ type EffectResolutionContext = {
   source: AppliedEffectSource;
 };
 
-AppliedEffectSource se reutilizará en EffectResolutionContext y en cada AppliedEffect persistido. En AppliedEffect, sourceEffectIndex será un entero no negativo y representará la posición dentro del array de efectos de esa fase.
+AppliedEffectSource se utiliza en cada AppliedEffect persistido y se reutilizará en EffectResolutionContext. En AppliedEffect, sourceEffectIndex es un entero no negativo y representa la posición dentro del array de efectos de esa fase.
 
 La combinación de source.phase, source.outcomeId cuando corresponda y sourceEffectIndex identificará el origen exacto del registro. Esta metadata debe persistirse porque los efectos directos de una opción y los de un outcome pueden resolverse en invocaciones diferentes, y ambos arrays comienzan en el índice cero.
 
@@ -1244,6 +1244,7 @@ migrar contenido en el futuro.
 
 outcomeId estará ausente cuando la opción no tenga resultados probabilísticos.
 eventVersion debe ser un entero positivo y no recibe un valor por defecto silencioso.
+immediateEffects utiliza la unión persistible estricta AppliedEffect. La forma abierta anterior ya no es válida. El esquema no impone unicidad ni orden entre source y sourceEffectIndex; esas comprobaciones corresponderán al futuro resolvedor.
 
 20. Resultado de resolución
 
@@ -1283,16 +1284,22 @@ Ejemplo de definición:
 Ejemplo de registro:
 
 {
-  "field": "stats.mood",
-  "operation": "add",
-  "previousValue": 70,
-  "appliedValue": -8,
-  "resultingValue": 62
+  "type": "player_stat",
+  "source": { "phase": "choice" },
+  "sourceEffectIndex": 0,
+  "status": "applied",
+  "requested": {
+    "field": "mood",
+    "operation": "add",
+    "value": -8
+  },
+  "previous": { "exists": true, "value": 70 },
+  "resulting": { "exists": true, "value": 62 }
 }
 
-La forma actual de AppliedEffect es insuficiente y será reemplazada antes de implementar el resolvedor. El nuevo contrato será una unión discriminada por las diez familias originales de GameEffect, no un registro abierto con target o field arbitrario.
+AppliedEffect es una unión discriminada estricta por las diez familias originales de GameEffect, no un registro abierto con target, path o field arbitrario.
 
-Cada variante incluirá:
+Cada variante incluye:
 
 source: AppliedEffectSource;
 sourceEffectIndex: entero no negativo;
@@ -1305,15 +1312,22 @@ snapshot resultante.
 
 sourceEffectIndex representa la posición dentro del array de efectos de source.phase. La combinación de phase, outcomeId cuando corresponda e índice permite distinguir efectos de choice y outcome aunque ambos arrays comiencen en cero.
 
-requested conservará el payload exacto del GameEffect original sin repetir type. Conceptualmente:
+La matriz estructural de status es:
+
+player_stat, football_attribute, life_state, football_state, flag, counter y relationship_value admiten applied y no_change;
+create_relationship admite applied e ignored;
+deactivate_relationship admite applied y no_change;
+schedule_event sólo admite applied.
+
+requested conserva el payload exacto del GameEffect original sin repetir type. Conceptualmente:
 
 type EffectPayload<TType extends GameEffect["type"]> =
   distribución de GameEffect por type,
   omitiendo el discriminante type.
 
-La transformación TypeScript deberá ser distributiva para conservar las uniones internas de variantes como life_state y football_state. No se utilizará una transformación que colapse sus combinaciones válidas de field, operation y value.
+La transformación TypeScript es distributiva para conservar las uniones internas de variantes como life_state y football_state. No colapsa sus combinaciones válidas de field, operation y value.
 
-Los snapshots se separarán por clase de dato:
+Los snapshots se separan por clase de dato:
 
 type AppliedScalarValue = boolean | number | string;
 
@@ -1331,26 +1345,26 @@ type AppliedScheduledEventSnapshot =
 
 player_stat, football_attribute, life_state, football_state, flag, counter y relationship_value utilizarán AppliedScalarSnapshot. create_relationship y deactivate_relationship utilizarán AppliedRelationshipSnapshot. schedule_event utilizará AppliedScheduledEventSnapshot. Esta separación impide persistir objetos o arrays arbitrarios dentro de registros escalares. Ningún snapshot utilizará undefined.
 
-create_relationship será una unión interna discriminada por status:
+create_relationship es una unión interna discriminada por status:
 
 applied tendrá previous con relación ausente y resulting con la relación completa presente;
 ignored exigirá requested.conflictPolicy igual a ignore y tendrá previous y resulting con una relación existente.
 
 La igualdad real entre los dos snapshots de ignored será responsabilidad del resolvedor.
 
-deactivate_relationship tendrá siempre relaciones completas presentes en previous y resulting. resulting.isActive será false. El resolvedor garantizará la coherencia entre applied, no_change y los valores reales.
+deactivate_relationship tiene siempre relaciones completas presentes en previous y resulting. resulting.isActive es false. El resolvedor garantizará la coherencia entre applied, no_change y los valores reales.
 
-relationship_value incluirá relationshipId como campo separado y tipado. Producirá un registro por relación; previous y resulting serán snapshots escalares con números presentes. No utilizará un path libre.
+relationship_value incluye relationshipId como campo separado y tipado. El futuro resolvedor producirá un registro por relación; previous y resulting son snapshots escalares con números presentes. No utiliza un path libre.
 
-schedule_event sólo admitirá status applied, tendrá previous siempre ausente y resulting con el ScheduledEvent absoluto. requested conservará el FollowUpDefinition relativo.
+schedule_event sólo admite status applied, tiene previous siempre ausente y resulting con el ScheduledEvent absoluto. requested conserva el FollowUpDefinition relativo.
 
-shared-types validará discriminantes, requested exacto, source, sourceEffectIndex, status permitido, clase de snapshot, propiedades adicionales y valores persistibles. No realizará comparaciones profundas.
+shared-types valida con Zod discriminantes, requested exacto, source, sourceEffectIndex, status permitido, clase de snapshot, propiedades adicionales y valores persistibles. AppliedEffectSchema es strict, rechaza undefined explícito, ciclos, Date, funciones, BigInt, NaN e Infinity, acepta referencias compartidas no circulares y no transforma ni muta los datos. Mantiene el comportamiento estándar de parse y safeParse. No realiza comparaciones profundas.
 
 game-engine garantizará posteriormente la correspondencia con el efecto real, la igualdad de no_change e ignored, la diferencia de applied, el orden y cantidad de registros, los snapshots reales y la semántica del resultado.
 
-Los únicos exports públicos nuevos de shared-types serán AppliedEffectSchema, AppliedEffect, AppliedEffectSourceSchema y AppliedEffectSource. Los esquemas de status, snapshots, payloads y variantes permanecerán internos.
+Los únicos exports públicos de este contrato en shared-types son AppliedEffectSchema, AppliedEffect, AppliedEffectSourceSchema y AppliedEffectSource. Los esquemas de status, snapshots, payloads y variantes permanecen internos.
 
-Este cambio será incompatible y modificará indirectamente DecisionRecord.immediateEffects. El commit técnico que implemente el nuevo esquema elevará GAME_VERSION a "0.3.0". Este commit documental no cambia GAME_VERSION, que continúa temporalmente en "0.2.0". No habrá migración porque no existen partidas persistidas de producción.
+Este cambio fue incompatible y modificó indirectamente DecisionRecord.immediateEffects. Su implementación elevó GAME_VERSION a "0.3.0". No se implementó una migración porque no existen partidas persistidas de producción. Las versiones internas de los package.json no tienen que coincidir con GAME_VERSION.
 
 22. Almacenamiento del contenido
 
@@ -1581,7 +1595,7 @@ repeat policies;
 evolución de DecisionRecord;
 evolución de ScheduledEvent.
 
-No se implementará en el primer commit técnico:
+No se implementó en el primer commit técnico:
 
 ChoiceResolution;
 evolución de AppliedEffect;
@@ -1594,6 +1608,8 @@ catálogo real;
 interfaz;
 API;
 base de datos.
+
+La evolución persistible de AppliedEffect y el evaluador de condiciones se implementaron en micro-commits posteriores. La aplicación runtime de efectos y los demás componentes enumerados continúan fuera del alcance actual.
 
 El primer commit técnico posterior a esta documentación deberá limitarse a los esquemas y tipos del contrato de acontecimientos y a las evoluciones estructurales persistibles enumeradas. No incluirá evaluación, aplicación, selección runtime ni catálogo.
 

@@ -1,6 +1,10 @@
 import type { z } from "zod";
 
 import type {
+  AppliedEffectSchema,
+  AppliedEffectSourceSchema,
+} from "./schemas/events/applied-effect.schema.js";
+import type {
   ChallengingTraitSchema,
   DominantFootSchema,
   EffectIntensitySchema,
@@ -74,7 +78,6 @@ import type {
   GameStateSchema,
 } from "./schemas/game-state.schema.js";
 import type {
-  AppliedEffectSchema,
   DecisionRecordSchema,
   GameHistorySchema,
   HistoryFlagValueSchema,
@@ -160,6 +163,8 @@ export type DeactivateRelationshipEffect = z.infer<
 >;
 export type ScheduleEventEffect = z.infer<typeof ScheduleEventEffectSchema>;
 export type GameEffect = z.infer<typeof GameEffectSchema>;
+export type AppliedEffectSource = z.infer<typeof AppliedEffectSourceSchema>;
+export type AppliedEffect = z.infer<typeof AppliedEffectSchema>;
 export type ProbabilisticOutcome = z.infer<typeof ProbabilisticOutcomeSchema>;
 export type EventChoice = z.infer<typeof EventChoiceSchema>;
 export type EventRepeatPolicy = z.infer<typeof EventRepeatPolicySchema>;
@@ -185,7 +190,6 @@ export type RetirementStatus = z.infer<typeof RetirementStatusSchema>;
 export type FootballState = z.infer<typeof FootballStateSchema>;
 export type RelationshipType = z.infer<typeof RelationshipTypeSchema>;
 export type Relationship = z.infer<typeof RelationshipSchema>;
-export type AppliedEffect = z.infer<typeof AppliedEffectSchema>;
 export type DecisionRecord = z.infer<typeof DecisionRecordSchema>;
 export type HistoryFlagValue = z.infer<typeof HistoryFlagValueSchema>;
 export type GameHistory = z.infer<typeof GameHistorySchema>;

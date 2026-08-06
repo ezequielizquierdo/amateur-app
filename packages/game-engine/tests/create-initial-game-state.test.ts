@@ -56,8 +56,8 @@ describe("createInitialGameState", () => {
   });
 
   it("always uses the controlled game version", () => {
-    expect(GAME_VERSION).toBe("0.2.0");
-    expect(createInitialGameState(createInput()).gameVersion).toBe("0.2.0");
+    expect(GAME_VERSION).toBe("0.3.0");
+    expect(createInitialGameState(createInput()).gameVersion).toBe("0.3.0");
   });
 
   it("does not invoke clock or randomness sources", () => {

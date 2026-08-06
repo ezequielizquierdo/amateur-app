@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { ScheduledEventSchema } from "@amateur-app/shared-types";
+import {
+  AppliedEffectSchema,
+  ScheduledEventSchema,
+} from "@amateur-app/shared-types";
 
 import {
   createInitialGameState,
@@ -15,8 +18,151 @@ describe("game-state serialization", () => {
     expect(deserializeGameState(serializeGameState(state))).toEqual(state);
   });
 
-  it("round-trips nested JsonValue fields", () => {
+  it("round-trips all AppliedEffect families with sources and snapshots", () => {
     const state = createInitialGameState(createInput());
+    const relationship = {
+      id: "relationship-1",
+      characterId: "character_1",
+      type: "friend" as const,
+      displayName: "Sam",
+      affection: 50,
+      trust: 60,
+      conflict: 10,
+      isActive: true,
+      isAlive: true,
+      startedAtAge: 14,
+      tags: ["childhood_friend"],
+    };
+    const inactiveRelationship = { ...relationship, isActive: false as const };
+    const source = { phase: "choice" as const };
+    const scalar = (
+      type:
+        | "player_stat"
+        | "football_attribute"
+        | "life_state"
+        | "football_state"
+        | "flag"
+        | "counter",
+      requested: Record<string, boolean | number | string>,
+      previous: boolean | number | string,
+      resulting: boolean | number | string,
+    ) => ({
+      type,
+      source,
+      sourceEffectIndex: 0,
+      status: "applied" as const,
+      requested,
+      previous: { exists: true as const, value: previous },
+      resulting: { exists: true as const, value: resulting },
+    });
+    const rawImmediateEffects = [
+      scalar(
+        "player_stat",
+        { field: "mood", operation: "add", value: 5 },
+        50,
+        55,
+      ),
+      scalar(
+        "football_attribute",
+        { field: "technique", operation: "set", value: 60 },
+        50,
+        60,
+      ),
+      scalar(
+        "life_state",
+        { field: "city", operation: "set", value: "Córdoba" },
+        "Rosario",
+        "Córdoba",
+      ),
+      scalar(
+        "football_state",
+        { field: "status", operation: "set", value: "academy" },
+        "without_team",
+        "academy",
+      ),
+      scalar("flag", { key: "accepted_offer", value: true }, false, true),
+      scalar(
+        "counter",
+        { key: "attempts", operation: "increment", value: 1 },
+        0,
+        1,
+      ),
+      {
+        type: "relationship_value",
+        source,
+        sourceEffectIndex: 6,
+        status: "applied",
+        requested: {
+          selector: { type: "friend" },
+          field: "trust",
+          operation: "add",
+          value: 5,
+        },
+        relationshipId: relationship.id,
+        previous: { exists: true, value: 60 },
+        resulting: { exists: true, value: 65 },
+      },
+      {
+        type: "create_relationship",
+        source,
+        sourceEffectIndex: 7,
+        status: "applied",
+        requested: {
+          relationship: {
+            id: relationship.id,
+            characterId: relationship.characterId,
+            type: relationship.type,
+            displayName: relationship.displayName,
+            affection: relationship.affection,
+            trust: relationship.trust,
+            conflict: relationship.conflict,
+            tags: relationship.tags,
+          },
+          conflictPolicy: "error",
+        },
+        previous: { exists: false },
+        resulting: { exists: true, value: relationship },
+      },
+      {
+        type: "deactivate_relationship",
+        source,
+        sourceEffectIndex: 8,
+        status: "applied",
+        requested: { relationshipId: relationship.id },
+        previous: { exists: true, value: relationship },
+        resulting: { exists: true, value: inactiveRelationship },
+      },
+      {
+        type: "schedule_event",
+        source: { phase: "outcome", outcomeId: "accepted" },
+        sourceEffectIndex: 0,
+        status: "applied",
+        requested: {
+          followUp: {
+            eventId: "next_event",
+            trigger: { type: "turn", afterTurns: 2 },
+            priority: 1,
+          },
+        },
+        previous: { exists: false },
+        resulting: {
+          exists: true,
+          value: {
+            id: "scheduled-1",
+            eventId: "next_event",
+            sourceEventId: "event_1",
+            priority: 1,
+            createdAtTurn: 0,
+            consumed: false,
+            triggerType: "turn",
+            triggerValue: 2,
+          },
+        },
+      },
+    ];
+    const immediateEffects = rawImmediateEffects.map((effect) =>
+      AppliedEffectSchema.parse(effect),
+    );
     state.history.decisions.push({
       eventId: "event_1",
       eventVersion: 1,
@@ -24,15 +170,7 @@ describe("game-state serialization", () => {
       age: 14,
       season: 1,
       turn: 0,
-      immediateEffects: [
-        {
-          field: "history.flags.example",
-          previousValue: null,
-          appliedValue: { nested: ["value", 1, true, null] },
-          resultingValue: { accepted: true },
-          operation: "set",
-        },
-      ],
+      immediateEffects,
     });
 
     expect(deserializeGameState(serializeGameState(state))).toEqual(state);

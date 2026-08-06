@@ -4,22 +4,12 @@ import {
   NonEmptyStringSchema,
   NonNegativeIntegerSchema,
 } from "./common.schema.js";
-import { JsonValueSchema } from "./json-value.schema.js";
+import { AppliedEffectSchema } from "./events/applied-effect.schema.js";
 import {
   ChoiceIdSchema,
   EventIdSchema,
   OutcomeIdSchema,
 } from "./events/event-common.schema.js";
-
-export const AppliedEffectSchema = z
-  .object({
-    field: NonEmptyStringSchema,
-    operation: z.enum(["add", "set", "multiply"]),
-    previousValue: JsonValueSchema.optional(),
-    appliedValue: JsonValueSchema,
-    resultingValue: JsonValueSchema.optional(),
-  })
-  .strict();
 
 export const DecisionRecordSchema = z
   .object({

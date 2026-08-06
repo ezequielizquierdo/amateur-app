@@ -51,104 +51,292 @@ export const FootballAttributeEffectSchema = z
   })
   .strict();
 
-const lifeSetEffects = [
-  ["educationStatus", EducationStatusSchema],
-  ["employmentStatus", EmploymentStatusSchema],
-  ["relationshipStatus", RelationshipStatusSchema],
-  ["occupationId", NonEmptyStringSchema],
-  ["employerId", NonEmptyStringSchema],
-  ["city", NonEmptyStringSchema],
-  ["country", NonEmptyStringSchema],
-  ["numberOfChildren", z.number().int().nonnegative()],
-  ["housingStatus", HousingStatusSchema],
+function setRequestedSchema<
+  const TField extends string,
+  TValueSchema extends z.ZodType,
+>(field: TField, value: TValueSchema) {
+  return z
+    .object({
+      field: z.literal(field),
+      operation: z.literal("set"),
+      value,
+    })
+    .strict();
+}
+
+const LifeEducationStatusSetRequestedSchema = setRequestedSchema(
+  "educationStatus",
+  EducationStatusSchema,
+);
+const LifeEmploymentStatusSetRequestedSchema = setRequestedSchema(
+  "employmentStatus",
+  EmploymentStatusSchema,
+);
+const LifeRelationshipStatusSetRequestedSchema = setRequestedSchema(
+  "relationshipStatus",
+  RelationshipStatusSchema,
+);
+const LifeOccupationIdSetRequestedSchema = setRequestedSchema(
+  "occupationId",
+  NonEmptyStringSchema,
+);
+const LifeEmployerIdSetRequestedSchema = setRequestedSchema(
+  "employerId",
+  NonEmptyStringSchema,
+);
+const LifeCitySetRequestedSchema = setRequestedSchema(
+  "city",
+  NonEmptyStringSchema,
+);
+const LifeCountrySetRequestedSchema = setRequestedSchema(
+  "country",
+  NonEmptyStringSchema,
+);
+const LifeNumberOfChildrenSetRequestedSchema = setRequestedSchema(
+  "numberOfChildren",
+  z.number().int().nonnegative(),
+);
+const LifeHousingStatusSetRequestedSchema = setRequestedSchema(
+  "housingStatus",
+  HousingStatusSchema,
+);
+const LifeNumberOfChildrenAddRequestedSchema = z
+  .object({
+    field: z.literal("numberOfChildren"),
+    operation: z.literal("add"),
+    value: z.number().int(),
+  })
+  .strict();
+const LifeOptionalIdClearRequestedSchema = z
+  .object({
+    field: z.enum(["occupationId", "employerId"]),
+    operation: z.literal("clear"),
+  })
+  .strict();
+
+const lifeStateRequestedVariants = [
+  LifeEducationStatusSetRequestedSchema,
+  LifeEmploymentStatusSetRequestedSchema,
+  LifeRelationshipStatusSetRequestedSchema,
+  LifeOccupationIdSetRequestedSchema,
+  LifeEmployerIdSetRequestedSchema,
+  LifeCitySetRequestedSchema,
+  LifeCountrySetRequestedSchema,
+  LifeNumberOfChildrenSetRequestedSchema,
+  LifeHousingStatusSetRequestedSchema,
+  LifeNumberOfChildrenAddRequestedSchema,
+  LifeOptionalIdClearRequestedSchema,
 ] as const;
+
+export const LifeStateEffectRequestedSchema = z.union(
+  lifeStateRequestedVariants,
+);
 
 export const LifeStateEffectSchema = z.union([
-  ...lifeSetEffects.map(([field, value]) =>
-    z
-      .object({
-        type: z.literal("life_state"),
-        field: z.literal(field),
-        operation: z.literal("set"),
-        value,
-      })
-      .strict(),
-  ),
-  z
-    .object({
-      type: z.literal("life_state"),
-      field: z.literal("numberOfChildren"),
-      operation: z.literal("add"),
-      value: z.number().int(),
-    })
-    .strict(),
-  z
-    .object({
-      type: z.literal("life_state"),
-      field: z.enum(["occupationId", "employerId"]),
-      operation: z.literal("clear"),
-    })
-    .strict(),
+  LifeEducationStatusSetRequestedSchema.extend({
+    type: z.literal("life_state"),
+  }).strict(),
+  LifeEmploymentStatusSetRequestedSchema.extend({
+    type: z.literal("life_state"),
+  }).strict(),
+  LifeRelationshipStatusSetRequestedSchema.extend({
+    type: z.literal("life_state"),
+  }).strict(),
+  LifeOccupationIdSetRequestedSchema.extend({
+    type: z.literal("life_state"),
+  }).strict(),
+  LifeEmployerIdSetRequestedSchema.extend({
+    type: z.literal("life_state"),
+  }).strict(),
+  LifeCitySetRequestedSchema.extend({ type: z.literal("life_state") }).strict(),
+  LifeCountrySetRequestedSchema.extend({
+    type: z.literal("life_state"),
+  }).strict(),
+  LifeNumberOfChildrenSetRequestedSchema.extend({
+    type: z.literal("life_state"),
+  }).strict(),
+  LifeHousingStatusSetRequestedSchema.extend({
+    type: z.literal("life_state"),
+  }).strict(),
+  LifeNumberOfChildrenAddRequestedSchema.extend({
+    type: z.literal("life_state"),
+  }).strict(),
+  LifeOptionalIdClearRequestedSchema.extend({
+    type: z.literal("life_state"),
+  }).strict(),
 ]);
 
-const footballSetEffects = [
-  ["status", FootballStatusSchema],
-  ["careerType", CareerTypeSchema],
-  ["currentTeamId", NonEmptyStringSchema],
-  ["currentClubId", NonEmptyStringSchema],
-  ["currentContractId", NonEmptyStringSchema],
-  ["currentAgentId", NonEmptyStringSchema],
-  ["teamRole", TeamRoleSchema],
-  ["teamTrust", ScaleSchema],
-  ["coachTrust", ScaleSchema],
-  ["professionalReputation", ScaleSchema],
-  ["amateurReputation", ScaleSchema],
-  ["salary", z.number().finite().nonnegative()],
-  ["marketValue", z.number().finite().nonnegative()],
-  ["isInjured", z.boolean()],
-  ["currentInjuryId", NonEmptyStringSchema],
-  ["retirementStatus", RetirementStatusSchema],
+const FootballStatusSetRequestedSchema = setRequestedSchema(
+  "status",
+  FootballStatusSchema,
+);
+const FootballCareerTypeSetRequestedSchema = setRequestedSchema(
+  "careerType",
+  CareerTypeSchema,
+);
+const FootballCurrentTeamIdSetRequestedSchema = setRequestedSchema(
+  "currentTeamId",
+  NonEmptyStringSchema,
+);
+const FootballCurrentClubIdSetRequestedSchema = setRequestedSchema(
+  "currentClubId",
+  NonEmptyStringSchema,
+);
+const FootballCurrentContractIdSetRequestedSchema = setRequestedSchema(
+  "currentContractId",
+  NonEmptyStringSchema,
+);
+const FootballCurrentAgentIdSetRequestedSchema = setRequestedSchema(
+  "currentAgentId",
+  NonEmptyStringSchema,
+);
+const FootballTeamRoleSetRequestedSchema = setRequestedSchema(
+  "teamRole",
+  TeamRoleSchema,
+);
+const FootballTeamTrustSetRequestedSchema = setRequestedSchema(
+  "teamTrust",
+  ScaleSchema,
+);
+const FootballCoachTrustSetRequestedSchema = setRequestedSchema(
+  "coachTrust",
+  ScaleSchema,
+);
+const FootballProfessionalReputationSetRequestedSchema = setRequestedSchema(
+  "professionalReputation",
+  ScaleSchema,
+);
+const FootballAmateurReputationSetRequestedSchema = setRequestedSchema(
+  "amateurReputation",
+  ScaleSchema,
+);
+const FootballSalarySetRequestedSchema = setRequestedSchema(
+  "salary",
+  z.number().finite().nonnegative(),
+);
+const FootballMarketValueSetRequestedSchema = setRequestedSchema(
+  "marketValue",
+  z.number().finite().nonnegative(),
+);
+const FootballIsInjuredSetRequestedSchema = setRequestedSchema(
+  "isInjured",
+  z.boolean(),
+);
+const FootballCurrentInjuryIdSetRequestedSchema = setRequestedSchema(
+  "currentInjuryId",
+  NonEmptyStringSchema,
+);
+const FootballRetirementStatusSetRequestedSchema = setRequestedSchema(
+  "retirementStatus",
+  RetirementStatusSchema,
+);
+const FootballNumericAddRequestedSchema = z
+  .object({
+    field: z.enum([
+      "teamTrust",
+      "coachTrust",
+      "professionalReputation",
+      "amateurReputation",
+      "salary",
+      "marketValue",
+    ]),
+    operation: z.literal("add"),
+    value: z.number().finite(),
+  })
+  .strict();
+const FootballOptionalIdClearRequestedSchema = z
+  .object({
+    field: z.enum([
+      "currentTeamId",
+      "currentClubId",
+      "currentContractId",
+      "currentAgentId",
+      "currentInjuryId",
+    ]),
+    operation: z.literal("clear"),
+  })
+  .strict();
+
+const footballStateRequestedVariants = [
+  FootballStatusSetRequestedSchema,
+  FootballCareerTypeSetRequestedSchema,
+  FootballCurrentTeamIdSetRequestedSchema,
+  FootballCurrentClubIdSetRequestedSchema,
+  FootballCurrentContractIdSetRequestedSchema,
+  FootballCurrentAgentIdSetRequestedSchema,
+  FootballTeamRoleSetRequestedSchema,
+  FootballTeamTrustSetRequestedSchema,
+  FootballCoachTrustSetRequestedSchema,
+  FootballProfessionalReputationSetRequestedSchema,
+  FootballAmateurReputationSetRequestedSchema,
+  FootballSalarySetRequestedSchema,
+  FootballMarketValueSetRequestedSchema,
+  FootballIsInjuredSetRequestedSchema,
+  FootballCurrentInjuryIdSetRequestedSchema,
+  FootballRetirementStatusSetRequestedSchema,
+  FootballNumericAddRequestedSchema,
+  FootballOptionalIdClearRequestedSchema,
 ] as const;
 
+export const FootballStateEffectRequestedSchema = z.union(
+  footballStateRequestedVariants,
+);
+
 export const FootballStateEffectSchema = z.union([
-  ...footballSetEffects.map(([field, value]) =>
-    z
-      .object({
-        type: z.literal("football_state"),
-        field: z.literal(field),
-        operation: z.literal("set"),
-        value,
-      })
-      .strict(),
-  ),
-  z
-    .object({
-      type: z.literal("football_state"),
-      field: z.enum([
-        "teamTrust",
-        "coachTrust",
-        "professionalReputation",
-        "amateurReputation",
-        "salary",
-        "marketValue",
-      ]),
-      operation: z.literal("add"),
-      value: z.number().finite(),
-    })
-    .strict(),
-  z
-    .object({
-      type: z.literal("football_state"),
-      field: z.enum([
-        "currentTeamId",
-        "currentClubId",
-        "currentContractId",
-        "currentAgentId",
-        "currentInjuryId",
-      ]),
-      operation: z.literal("clear"),
-    })
-    .strict(),
+  FootballStatusSetRequestedSchema.extend({
+    type: z.literal("football_state"),
+  }).strict(),
+  FootballCareerTypeSetRequestedSchema.extend({
+    type: z.literal("football_state"),
+  }).strict(),
+  FootballCurrentTeamIdSetRequestedSchema.extend({
+    type: z.literal("football_state"),
+  }).strict(),
+  FootballCurrentClubIdSetRequestedSchema.extend({
+    type: z.literal("football_state"),
+  }).strict(),
+  FootballCurrentContractIdSetRequestedSchema.extend({
+    type: z.literal("football_state"),
+  }).strict(),
+  FootballCurrentAgentIdSetRequestedSchema.extend({
+    type: z.literal("football_state"),
+  }).strict(),
+  FootballTeamRoleSetRequestedSchema.extend({
+    type: z.literal("football_state"),
+  }).strict(),
+  FootballTeamTrustSetRequestedSchema.extend({
+    type: z.literal("football_state"),
+  }).strict(),
+  FootballCoachTrustSetRequestedSchema.extend({
+    type: z.literal("football_state"),
+  }).strict(),
+  FootballProfessionalReputationSetRequestedSchema.extend({
+    type: z.literal("football_state"),
+  }).strict(),
+  FootballAmateurReputationSetRequestedSchema.extend({
+    type: z.literal("football_state"),
+  }).strict(),
+  FootballSalarySetRequestedSchema.extend({
+    type: z.literal("football_state"),
+  }).strict(),
+  FootballMarketValueSetRequestedSchema.extend({
+    type: z.literal("football_state"),
+  }).strict(),
+  FootballIsInjuredSetRequestedSchema.extend({
+    type: z.literal("football_state"),
+  }).strict(),
+  FootballCurrentInjuryIdSetRequestedSchema.extend({
+    type: z.literal("football_state"),
+  }).strict(),
+  FootballRetirementStatusSetRequestedSchema.extend({
+    type: z.literal("football_state"),
+  }).strict(),
+  FootballNumericAddRequestedSchema.extend({
+    type: z.literal("football_state"),
+  }).strict(),
+  FootballOptionalIdClearRequestedSchema.extend({
+    type: z.literal("football_state"),
+  }).strict(),
 ]);
 
 export const FlagEffectSchema = z
@@ -235,3 +423,44 @@ export const GameEffectSchema = z.union([
   DeactivateRelationshipEffectSchema,
   ScheduleEventEffectSchema,
 ]);
+
+export const PlayerStatEffectRequestedSchema = PlayerStatEffectSchema.omit({
+  type: true,
+});
+export const FootballAttributeEffectRequestedSchema =
+  FootballAttributeEffectSchema.omit({ type: true });
+
+export const FlagEffectRequestedSchema = FlagEffectSchema.omit({ type: true });
+
+const counterRequestedVariants = [
+  z
+    .object({
+      key: NonEmptyStringSchema,
+      operation: z.literal("set"),
+      value: z.number().int().nonnegative(),
+    })
+    .strict(),
+  z
+    .object({
+      key: NonEmptyStringSchema,
+      operation: z.literal("increment"),
+      value: z.number().int(),
+    })
+    .strict(),
+];
+export const CounterEffectRequestedSchema = z.union(
+  counterRequestedVariants as [
+    (typeof counterRequestedVariants)[number],
+    (typeof counterRequestedVariants)[number],
+    ...(typeof counterRequestedVariants)[number][],
+  ],
+);
+
+export const RelationshipValueEffectRequestedSchema =
+  RelationshipValueEffectSchema.omit({ type: true });
+export const CreateRelationshipEffectRequestedSchema =
+  CreateRelationshipEffectSchema.omit({ type: true });
+export const DeactivateRelationshipEffectRequestedSchema =
+  DeactivateRelationshipEffectSchema.omit({ type: true });
+export const ScheduleEventEffectRequestedSchema =
+  ScheduleEventEffectSchema.omit({ type: true });

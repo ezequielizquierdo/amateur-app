@@ -3,7 +3,24 @@ export * from "./schemas/football-attributes.schema.js";
 export * from "./schemas/football.schema.js";
 export * from "./schemas/events/choices.schema.js";
 export * from "./schemas/events/conditions.schema.js";
-export * from "./schemas/events/effects.schema.js";
+export {
+  AppliedEffectSchema,
+  AppliedEffectSourceSchema,
+} from "./schemas/events/applied-effect.schema.js";
+export {
+  CounterEffectSchema,
+  CreateRelationshipEffectSchema,
+  DeactivateRelationshipEffectSchema,
+  FlagEffectSchema,
+  FootballAttributeEffectSchema,
+  FootballStateEffectSchema,
+  GameEffectSchema,
+  LifeStateEffectSchema,
+  PlayerStatEffectSchema,
+  RelationshipCreationDefinitionSchema,
+  RelationshipValueEffectSchema,
+  ScheduleEventEffectSchema,
+} from "./schemas/events/effects.schema.js";
 export {
   ChoiceIdSchema,
   EventCategorySchema,

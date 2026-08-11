@@ -3,6 +3,28 @@ import { describe, expect, it } from "vitest";
 import { GameEffectSchema } from "../../src/index.js";
 
 describe("game effects", () => {
+  const validHistoryKeys = [
+    "test",
+    "a",
+    "accepted_offer",
+    "counter_2",
+    "2_attempts",
+  ] as const;
+  const invalidHistoryKeys = [
+    "",
+    "   ",
+    " exact ",
+    "__proto__",
+    "prototype",
+    "constructor",
+    "UPPERCASE",
+    "with-dash",
+    "with.dot",
+    "double__underscore",
+    "_leading",
+    "trailing_",
+  ] as const;
+
   it.each([
     { type: "player_stat", field: "mood", operation: "add", value: -5 },
     {
@@ -101,5 +123,54 @@ describe("game effects", () => {
         value,
       }).success,
     ).toBe(true);
+  });
+
+  it.each(validHistoryKeys)("accepts the history key %j", (key) => {
+    expect(
+      GameEffectSchema.safeParse({ type: "flag", key, value: true }).success,
+    ).toBe(true);
+    expect(
+      GameEffectSchema.safeParse({
+        type: "counter",
+        key,
+        operation: "set",
+        value: 0,
+      }).success,
+    ).toBe(true);
+  });
+
+  it.each(invalidHistoryKeys)("rejects the history key %j", (key) => {
+    expect(
+      GameEffectSchema.safeParse({ type: "flag", key, value: true }).success,
+    ).toBe(false);
+    expect(
+      GameEffectSchema.safeParse({
+        type: "counter",
+        key,
+        operation: "increment",
+        value: 1,
+      }).success,
+    ).toBe(false);
+  });
+
+  it("uses safe integers for both counter operations", () => {
+    for (const operation of ["set", "increment"] as const) {
+      expect(
+        GameEffectSchema.safeParse({
+          type: "counter",
+          key: "attempts",
+          operation,
+          value: Number.MAX_SAFE_INTEGER,
+        }).success,
+      ).toBe(true);
+      expect(
+        GameEffectSchema.safeParse({
+          type: "counter",
+          key: "attempts",
+          operation,
+          value: Number.MAX_SAFE_INTEGER + 1,
+        }).success,
+      ).toBe(false);
+    }
   });
 });

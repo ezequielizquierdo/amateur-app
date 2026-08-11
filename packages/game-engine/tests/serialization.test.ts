@@ -18,6 +18,30 @@ describe("game-state serialization", () => {
     expect(deserializeGameState(serializeGameState(state))).toEqual(state);
   });
 
+  it("round-trips valid dynamic history values exactly", () => {
+    const state = createInitialGameState(createInput());
+    state.history.flags = {
+      boolean_false: false,
+      numeric_zero: 0,
+      empty_string: "",
+      accepted_offer: true,
+    };
+    state.history.counters = {
+      zero_count: 0,
+      attempt_count: 3,
+      safe_maximum: Number.MAX_SAFE_INTEGER,
+    };
+
+    const restored = deserializeGameState(serializeGameState(state));
+
+    expect(restored.history.flags).toEqual(state.history.flags);
+    expect(restored.history.counters).toEqual(state.history.counters);
+    expect(Object.hasOwn(restored.history.flags, "boolean_false")).toBe(true);
+    expect(Object.hasOwn(restored.history.flags, "numeric_zero")).toBe(true);
+    expect(Object.hasOwn(restored.history.flags, "empty_string")).toBe(true);
+    expect(Object.hasOwn(restored.history.counters, "zero_count")).toBe(true);
+  });
+
   it("round-trips all AppliedEffect families with sources and snapshots", () => {
     const state = createInitialGameState(createInput());
     const relationship = {

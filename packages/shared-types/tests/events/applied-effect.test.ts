@@ -175,7 +175,7 @@ function decision(immediateEffects: unknown[] = validEffects) {
 function validState() {
   return {
     runId: "run-1",
-    gameVersion: "0.3.0",
+    gameVersion: "0.4.0",
     seed: "seed-1",
     profile: {
       id: "profile-1",
@@ -443,6 +443,49 @@ describe("AppliedEffect requested payloads", () => {
       ).toBe(expected);
     },
   );
+
+  it.each(["", "__proto__", "prototype", "constructor", "with-dash"])(
+    "rejects the history key %j in persisted requested payloads",
+    (key) => {
+      expect(
+        AppliedEffectSchema.safeParse({
+          ...validEffects[4],
+          requested: { key, value: true },
+        }).success,
+      ).toBe(false);
+      expect(
+        AppliedEffectSchema.safeParse({
+          ...validEffects[5],
+          requested: { key, operation: "set", value: 0 },
+        }).success,
+      ).toBe(false);
+    },
+  );
+
+  it("uses safe integers in persisted counter requests", () => {
+    for (const operation of ["set", "increment"] as const) {
+      expect(
+        AppliedEffectSchema.safeParse({
+          ...validEffects[5],
+          requested: {
+            key: "attempts",
+            operation,
+            value: Number.MAX_SAFE_INTEGER,
+          },
+        }).success,
+      ).toBe(true);
+      expect(
+        AppliedEffectSchema.safeParse({
+          ...validEffects[5],
+          requested: {
+            key: "attempts",
+            operation,
+            value: Number.MAX_SAFE_INTEGER + 1,
+          },
+        }).success,
+      ).toBe(false);
+    }
+  });
 });
 
 describe("AppliedEffect snapshots and statuses", () => {

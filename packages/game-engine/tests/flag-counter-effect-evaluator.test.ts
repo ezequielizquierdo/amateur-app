@@ -33,6 +33,41 @@ function expectPersistible(record: unknown): void {
 }
 
 describe("applyFlagOrCounterEffect", () => {
+  it.each([
+    ["flag", { type: "flag", key: "__proto__", value: true }],
+    [
+      "counter",
+      { type: "counter", key: "__proto__", operation: "set", value: 1 },
+    ],
+  ] as const)(
+    "defensively rejects __proto__ for %s without changing state",
+    (_family, unsafeEffect) => {
+      const state = structuredClone(validState());
+      const before = structuredClone(state);
+      expect(Object.getPrototypeOf(state.history.flags)).toBe(Object.prototype);
+      expect(Object.getPrototypeOf(state.history.counters)).toBe(
+        Object.prototype,
+      );
+      let thrown: unknown;
+
+      try {
+        apply(unsafeEffect, state);
+      } catch (error) {
+        thrown = error;
+      }
+
+      expect(thrown).toBeInstanceOf(InternalEffectApplicationError);
+      expect(thrown).toMatchObject({ code: "INVALID_INPUT" });
+      expect(Object.hasOwn(state.history.flags, "__proto__")).toBe(false);
+      expect(Object.hasOwn(state.history.counters, "__proto__")).toBe(false);
+      expect(Object.getPrototypeOf(state.history.flags)).toBe(Object.prototype);
+      expect(Object.getPrototypeOf(state.history.counters)).toBe(
+        Object.prototype,
+      );
+      expect(state).toEqual(before);
+    },
+  );
+
   describe("flag", () => {
     it.each([[true], ["value"], [12.5], [""]] as const)(
       "creates a flag with value %s from absence",
@@ -119,12 +154,16 @@ describe("applyFlagOrCounterEffect", () => {
       { phase: "choice" } as const,
       { phase: "outcome", outcomeId: "outcome_1" } as const,
     ])("copies source and requested for $phase", (source) => {
-      const effect: FlagEffect = { type: "flag", key: " exact ", value: -0 };
+      const effect: FlagEffect = {
+        type: "flag",
+        key: "exact_value",
+        value: -0,
+      };
       const effectBefore = structuredClone(effect);
       const sourceBefore = structuredClone(source);
       const { audit, record } = apply(effect, undefined, source);
 
-      expect(record.requested).toEqual({ key: " exact ", value: -0 });
+      expect(record.requested).toEqual({ key: "exact_value", value: -0 });
       expect(record.source).toEqual(source);
       expect(record.source).not.toBe(source);
       expect(record.sourceEffectIndex).toBe(3);
@@ -253,21 +292,21 @@ describe("applyFlagOrCounterEffect", () => {
       },
     );
 
-    it("rejects overflow before writing", () => {
+    it("rejects safe integer overflow before writing", () => {
       const state = structuredClone(validState());
-      state.history.counters.test = Number.MAX_VALUE;
-      const before = structuredClone(state.history.counters);
+      state.history.counters.test = Number.MAX_SAFE_INTEGER;
+      const before = structuredClone(state);
       const effect: CounterEffect = {
         type: "counter",
         key: "test",
         operation: "increment",
-        value: Number.MAX_VALUE,
+        value: 1,
       };
 
       expect(() => apply(effect, state)).toThrow(
         InternalEffectApplicationError,
       );
-      expect(state.history.counters).toEqual(before);
+      expect(state).toEqual(before);
       try {
         apply(effect, state);
       } catch (error) {
@@ -279,17 +318,33 @@ describe("applyFlagOrCounterEffect", () => {
       }
     });
 
-    it("rejects a fractional resulting value before writing", () => {
-      const state = structuredClone(validState());
-      state.history.counters.test = 0.5;
-      expect(() =>
-        apply(
-          { type: "counter", key: "test", operation: "increment", value: 1 },
-          state,
-        ),
-      ).toThrow(InternalEffectApplicationError);
-      expect(state.history.counters.test).toBe(0.5);
-    });
+    it.each([1.5, -1])(
+      "rejects the invalid existing counter %s before writing",
+      (existing) => {
+        const state = structuredClone(validState());
+        state.history.counters.test = existing;
+        const before = structuredClone(state);
+        let thrown: unknown;
+
+        try {
+          apply(
+            {
+              type: "counter",
+              key: "test",
+              operation: "increment",
+              value: 1,
+            },
+            state,
+          );
+        } catch (error) {
+          thrown = error;
+        }
+
+        expect(thrown).toBeInstanceOf(InternalEffectApplicationError);
+        expect(thrown).toMatchObject({ code: "INVALID_NUMERIC_RESULT" });
+        expect(state).toEqual(before);
+      },
+    );
 
     it.each([
       { phase: "choice" } as const,
@@ -297,7 +352,7 @@ describe("applyFlagOrCounterEffect", () => {
     ])("copies source and requested for $phase", (source) => {
       const effect: CounterEffect = {
         type: "counter",
-        key: " exact ",
+        key: "exact_value",
         operation: "increment",
         value: -0,
       };
@@ -306,7 +361,7 @@ describe("applyFlagOrCounterEffect", () => {
       const { audit, record } = apply(effect, undefined, source);
 
       expect(record.requested).toEqual({
-        key: " exact ",
+        key: "exact_value",
         operation: "increment",
         value: -0,
       });

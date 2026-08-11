@@ -111,6 +111,79 @@ describe("shared structural schemas", () => {
     expect(GameStateSchema.safeParse(validState()).success).toBe(true);
   });
 
+  it.each(["test", "a", "accepted_offer", "counter_2", "2_attempts"])(
+    "accepts the history key %j in flags and counters",
+    (key) => {
+      const state = validState() as {
+        history: {
+          flags: Record<string, boolean>;
+          counters: Record<string, number>;
+        };
+      };
+      state.history.flags = { [key]: true };
+      state.history.counters = { [key]: 0 };
+      expect(GameStateSchema.safeParse(state).success).toBe(true);
+    },
+  );
+
+  it.each([
+    "",
+    "   ",
+    " exact ",
+    "__proto__",
+    "prototype",
+    "constructor",
+    "UPPERCASE",
+    "with-dash",
+    "with.dot",
+    "double__underscore",
+    "_leading",
+    "trailing_",
+  ])("rejects the history key %j in flags and counters", (key) => {
+    const stateWithFlag = validState() as {
+      history: {
+        flags: Record<string, boolean>;
+        counters: Record<string, number>;
+      };
+    };
+    const stateWithCounter = validState() as {
+      history: {
+        flags: Record<string, boolean>;
+        counters: Record<string, number>;
+      };
+    };
+    stateWithFlag.history.flags = { [key]: true };
+    stateWithCounter.history.counters = { [key]: 0 };
+    expect(GameStateSchema.safeParse(stateWithFlag).success).toBe(false);
+    expect(GameStateSchema.safeParse(stateWithCounter).success).toBe(false);
+  });
+
+  it.each([0, 1, Number.MAX_SAFE_INTEGER])(
+    "accepts the persisted counter %s",
+    (value) => {
+      const state = validState() as {
+        history: { counters: Record<string, number> };
+      };
+      state.history.counters.test = value;
+      expect(GameStateSchema.safeParse(state).success).toBe(true);
+    },
+  );
+
+  it.each([
+    -1,
+    1.5,
+    Number.MAX_SAFE_INTEGER + 1,
+    Number.NaN,
+    Number.POSITIVE_INFINITY,
+    Number.NEGATIVE_INFINITY,
+  ])("rejects the persisted counter %s", (value) => {
+    const state = validState() as {
+      history: { counters: Record<string, number> };
+    };
+    state.history.counters.test = value;
+    expect(GameStateSchema.safeParse(state).success).toBe(false);
+  });
+
   it("rejects an empty player name", () => {
     const state = validState() as { profile: { name: string } };
     state.profile.name = " ";

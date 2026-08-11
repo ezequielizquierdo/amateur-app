@@ -15,6 +15,7 @@ import {
   RelationshipStatusSchema,
 } from "../life.schema.js";
 import { RelationshipTypeSchema } from "../relationship.schema.js";
+import { HistoryKeySchema } from "../history-key.schema.js";
 import { EventIdSchema } from "./event-common.schema.js";
 
 const comparisonOperators = z.enum([
@@ -154,7 +155,7 @@ export const FlagConditionSchema = z.union([
   z
     .object({
       type: z.literal("flag"),
-      key: NonEmptyStringSchema,
+      key: HistoryKeySchema,
       operator: equalityOperators,
       value: flagValueSchema,
     })
@@ -162,7 +163,7 @@ export const FlagConditionSchema = z.union([
   z
     .object({
       type: z.literal("flag"),
-      key: NonEmptyStringSchema,
+      key: HistoryKeySchema,
       operator: existenceOperators,
     })
     .strict(),
@@ -171,7 +172,7 @@ export const FlagConditionSchema = z.union([
 export const CounterConditionSchema = z
   .object({
     type: z.literal("counter"),
-    key: NonEmptyStringSchema,
+    key: HistoryKeySchema,
     operator: comparisonOperators,
     value: z.number().finite(),
   })

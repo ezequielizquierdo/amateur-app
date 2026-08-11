@@ -123,6 +123,59 @@ describe("event conditions", () => {
     expect(EventConditionSchema.safeParse(condition).success).toBe(true);
   });
 
+  it("accepts a fractional counter comparison threshold", () => {
+    expect(
+      EventConditionSchema.safeParse({
+        type: "counter",
+        key: "attempts",
+        operator: "greaterThan",
+        value: 1.5,
+      }).success,
+    ).toBe(true);
+  });
+
+  it.each(["accepted_offer", "counter_2", "2_attempts"])(
+    "shares the valid history key policy for %j",
+    (key) => {
+      expect(
+        EventConditionSchema.safeParse({
+          type: "flag",
+          key,
+          operator: "exists",
+        }).success,
+      ).toBe(true);
+      expect(
+        EventConditionSchema.safeParse({
+          type: "counter",
+          key,
+          operator: "equals",
+          value: 0,
+        }).success,
+      ).toBe(true);
+    },
+  );
+
+  it.each(["", "__proto__", "prototype", "constructor", "with-dash"])(
+    "shares the invalid history key policy for %j",
+    (key) => {
+      expect(
+        EventConditionSchema.safeParse({
+          type: "flag",
+          key,
+          operator: "exists",
+        }).success,
+      ).toBe(false);
+      expect(
+        EventConditionSchema.safeParse({
+          type: "counter",
+          key,
+          operator: "equals",
+          value: 0,
+        }).success,
+      ).toBe(false);
+    },
+  );
+
   it.each([
     {
       type: "relationship",

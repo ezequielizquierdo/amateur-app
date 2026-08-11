@@ -10,6 +10,31 @@ import {
   EventIdSchema,
   OutcomeIdSchema,
 } from "./events/event-common.schema.js";
+import { HistoryKeySchema } from "./history-key.schema.js";
+
+function historyRecordSchema<TValue extends z.ZodType>(value: TValue) {
+  return z
+    .unknown()
+    .superRefine((input, context) => {
+      if (typeof input !== "object" || input === null || Array.isArray(input)) {
+        return;
+      }
+
+      for (const key of Object.keys(input)) {
+        const result = HistoryKeySchema.safeParse(key);
+        if (!result.success) {
+          for (const issue of result.error.issues) {
+            context.addIssue({
+              code: "custom",
+              message: issue.message,
+              path: [key],
+            });
+          }
+        }
+      }
+    })
+    .pipe(z.record(HistoryKeySchema, value));
+}
 
 export const DecisionRecordSchema = z
   .object({
@@ -33,8 +58,8 @@ export const HistoryFlagValueSchema = z.union([
 export const GameHistorySchema = z
   .object({
     decisions: z.array(DecisionRecordSchema),
-    flags: z.record(z.string(), HistoryFlagValueSchema),
-    counters: z.record(z.string(), z.number().finite()),
+    flags: historyRecordSchema(HistoryFlagValueSchema),
+    counters: historyRecordSchema(NonNegativeIntegerSchema),
     completedEventIds: z.array(NonEmptyStringSchema),
     recentEventIds: z.array(NonEmptyStringSchema),
     formerTeamIds: z.array(NonEmptyStringSchema),

@@ -14,6 +14,7 @@ import {
   RelationshipStatusSchema,
 } from "../life.schema.js";
 import { RelationshipTypeSchema } from "../relationship.schema.js";
+import { HistoryKeySchema } from "../history-key.schema.js";
 import { RelationshipSelectorSchema } from "./conditions.schema.js";
 import { FollowUpDefinitionSchema } from "./follow-up.schema.js";
 
@@ -342,7 +343,7 @@ export const FootballStateEffectSchema = z.union([
 export const FlagEffectSchema = z
   .object({
     type: z.literal("flag"),
-    key: NonEmptyStringSchema,
+    key: HistoryKeySchema,
     value: z.union([z.boolean(), z.number().finite(), z.string()]),
   })
   .strict();
@@ -351,7 +352,7 @@ export const CounterEffectSchema = z.union([
   z
     .object({
       type: z.literal("counter"),
-      key: NonEmptyStringSchema,
+      key: HistoryKeySchema,
       operation: z.literal("set"),
       value: z.number().int().nonnegative(),
     })
@@ -359,7 +360,7 @@ export const CounterEffectSchema = z.union([
   z
     .object({
       type: z.literal("counter"),
-      key: NonEmptyStringSchema,
+      key: HistoryKeySchema,
       operation: z.literal("increment"),
       value: z.number().int(),
     })
@@ -435,14 +436,14 @@ export const FlagEffectRequestedSchema = FlagEffectSchema.omit({ type: true });
 const counterRequestedVariants = [
   z
     .object({
-      key: NonEmptyStringSchema,
+      key: HistoryKeySchema,
       operation: z.literal("set"),
       value: z.number().int().nonnegative(),
     })
     .strict(),
   z
     .object({
-      key: NonEmptyStringSchema,
+      key: HistoryKeySchema,
       operation: z.literal("increment"),
       value: z.number().int(),
     })

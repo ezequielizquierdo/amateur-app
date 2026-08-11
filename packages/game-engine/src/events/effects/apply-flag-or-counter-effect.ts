@@ -53,6 +53,15 @@ function sameSnapshot(
   );
 }
 
+function assertSafeHistoryKey(key: string): void {
+  if (key === "__proto__") {
+    throw new InternalEffectApplicationError(
+      "INVALID_INPUT",
+      "History key __proto__ cannot be used",
+    );
+  }
+}
+
 function applyFlagEffect(
   effect: FlagEffect,
   workingState: GameState,
@@ -103,10 +112,10 @@ function presentFlagValue(
 }
 
 function validCounterResult(key: string, value: number): number {
-  if (!Number.isFinite(value) || !Number.isInteger(value) || value < 0) {
+  if (!Number.isSafeInteger(value) || value < 0) {
     throw new InternalEffectApplicationError(
       "INVALID_NUMERIC_RESULT",
-      `counter.${key} failed: result must be a finite nonnegative integer`,
+      `counter.${key} failed: result must be a safe nonnegative integer`,
     );
   }
   return Object.is(value, -0) ? 0 : value;
@@ -120,6 +129,12 @@ function presentCounterValue(
     throw new InternalEffectApplicationError(
       "INVALID_INPUT",
       `counter.${key} failed: existing counter has an undefined value`,
+    );
+  }
+  if (!Number.isSafeInteger(value) || value < 0) {
+    throw new InternalEffectApplicationError(
+      "INVALID_NUMERIC_RESULT",
+      `counter.${key} failed: existing value must be a safe nonnegative integer`,
     );
   }
   return { exists: true, value };
@@ -205,6 +220,8 @@ export function applyFlagOrCounterEffect(
   workingState: GameState,
   audit: EffectAuditMetadata,
 ): FlagOrCounterAppliedEffect {
+  assertSafeHistoryKey(effect.key);
+
   switch (effect.type) {
     case "flag":
       return applyFlagEffect(effect, workingState, audit);

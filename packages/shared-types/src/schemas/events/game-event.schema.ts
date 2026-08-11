@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { findPersistibilityIssue } from "../../validation/find-persistibility-issue.js";
+import { persistibleSchema } from "../../validation/persistible-schema.js";
 import { CareerTypeSchema, FootballStatusSchema } from "../football.schema.js";
 import { LifeStageSchema } from "../life.schema.js";
 import { EventChoiceSchema } from "./choices.schema.js";
@@ -62,16 +62,4 @@ const GameEventObjectSchema = z
     });
   });
 
-export const GameEventSchema = z
-  .unknown()
-  .superRefine((value, context) => {
-    const issue = findPersistibilityIssue(value);
-    if (issue !== undefined) {
-      context.addIssue({
-        code: "custom",
-        message: issue.message,
-        path: issue.path,
-      });
-    }
-  })
-  .pipe(GameEventObjectSchema);
+export const GameEventSchema = persistibleSchema(GameEventObjectSchema);

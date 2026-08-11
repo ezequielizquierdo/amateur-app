@@ -674,6 +674,36 @@ describe("scheduled applied effects", () => {
 });
 
 describe("AppliedEffect persistibility", () => {
+  it("rejects an accessor without executing it", () => {
+    const effect = { ...validEffects[0] };
+    let getterCalls = 0;
+    Object.defineProperty(effect, "type", {
+      enumerable: true,
+      get() {
+        getterCalls += 1;
+        throw new Error("boom");
+      },
+    });
+
+    expect(() => AppliedEffectSchema.safeParse(effect)).not.toThrow();
+    expect(AppliedEffectSchema.safeParse(effect).success).toBe(false);
+    expect(getterCalls).toBe(0);
+    expect(() => AppliedEffectSchema.parse(effect)).toThrow(ZodError);
+    expect(getterCalls).toBe(0);
+  });
+
+  it("rejects Symbol and non-enumerable own properties", () => {
+    const withSymbol = { ...validEffects[0], [Symbol("hidden")]: true };
+    const withHidden = { ...validEffects[0] };
+    Object.defineProperty(withHidden, "hidden", {
+      enumerable: false,
+      value: true,
+    });
+
+    expect(AppliedEffectSchema.safeParse(withSymbol).success).toBe(false);
+    expect(AppliedEffectSchema.safeParse(withHidden).success).toBe(false);
+  });
+
   it("returns failed safeParse results and ZodError for explicit undefined", () => {
     const effect = { ...validEffects[0], extra: undefined };
     expect(() => AppliedEffectSchema.safeParse(effect)).not.toThrow();

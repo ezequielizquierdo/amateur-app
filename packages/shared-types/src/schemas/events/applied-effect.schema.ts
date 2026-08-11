@@ -3,7 +3,7 @@ import { z } from "zod";
 import { NonEmptyStringSchema } from "../common.schema.js";
 import { RelationshipSchema } from "../relationship.schema.js";
 import { ScheduledEventSchema } from "../scheduled-event.schema.js";
-import { findPersistibilityIssue } from "../../validation/find-persistibility-issue.js";
+import { persistibleSchema } from "../../validation/persistible-schema.js";
 import {
   CounterEffectRequestedSchema,
   CreateRelationshipEffectRequestedSchema,
@@ -182,16 +182,6 @@ const AppliedEffectStructuralSchema = z.union([
   AppliedScheduleEventEffectSchema,
 ]);
 
-export const AppliedEffectSchema = z
-  .unknown()
-  .superRefine((value, context) => {
-    const issue = findPersistibilityIssue(value);
-    if (issue !== undefined) {
-      context.addIssue({
-        code: "custom",
-        message: issue.message,
-        path: issue.path,
-      });
-    }
-  })
-  .pipe(AppliedEffectStructuralSchema);
+export const AppliedEffectSchema = persistibleSchema(
+  AppliedEffectStructuralSchema,
+);

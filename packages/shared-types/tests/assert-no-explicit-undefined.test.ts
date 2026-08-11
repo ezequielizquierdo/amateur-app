@@ -32,6 +32,23 @@ describe("assertNoExplicitUndefined", () => {
     );
   });
 
+  it("rejects undefined in Symbol-keyed and non-enumerable data properties", () => {
+    const symbol = Symbol("missing");
+    const value: Record<PropertyKey, unknown> = { [symbol]: undefined };
+    Object.defineProperty(value, "hidden", {
+      enumerable: false,
+      value: undefined,
+    });
+
+    expect(() => assertNoExplicitUndefined(value)).toThrow(
+      /undefined is not a persistible value/,
+    );
+    delete value[symbol];
+    expect(() => assertNoExplicitUndefined(value)).toThrow(
+      /hidden.*undefined is not a persistible value/,
+    );
+  });
+
   it("identifies the complete path of the invalid property", () => {
     expect(() =>
       assertNoExplicitUndefined({
@@ -55,6 +72,31 @@ describe("assertNoExplicitUndefined", () => {
     expect(() => assertNoExplicitUndefined(circular)).toThrow(
       /self contains a circular reference and is not persistible/,
     );
+  });
+
+  it("rejects an indirect circular reference", () => {
+    const first: Record<string, unknown> = {};
+    const second: Record<string, unknown> = { first };
+    first.second = second;
+
+    expect(() => assertNoExplicitUndefined(first)).toThrow(
+      /second\.first contains a circular reference/,
+    );
+  });
+
+  it("does not execute or reject an accessor only for existing", () => {
+    let getterCalls = 0;
+    const value = {};
+    Object.defineProperty(value, "computed", {
+      enumerable: true,
+      get() {
+        getterCalls += 1;
+        throw new Error("boom");
+      },
+    });
+
+    expect(() => assertNoExplicitUndefined(value)).not.toThrow();
+    expect(getterCalls).toBe(0);
   });
 
   it("does not mutate the received value", () => {

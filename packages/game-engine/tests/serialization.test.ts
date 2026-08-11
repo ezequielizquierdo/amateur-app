@@ -329,4 +329,19 @@ describe("game-state serialization", () => {
       );
     },
   );
+
+  it("rejects an accessor before serialization without executing it", () => {
+    const state = createInitialGameState(createInput());
+    let getterCalls = 0;
+    Object.defineProperty(state, "runId", {
+      enumerable: true,
+      get() {
+        getterCalls += 1;
+        throw new Error("boom");
+      },
+    });
+
+    expect(() => serializeGameState(state)).toThrow(/accessor/);
+    expect(getterCalls).toBe(0);
+  });
 });

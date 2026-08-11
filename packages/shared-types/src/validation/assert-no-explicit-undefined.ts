@@ -1,4 +1,4 @@
-import { findPersistibilityIssue } from "./find-persistibility-issue.js";
+import { inspectUndefinedAndCyclesOnly } from "./inspect-object-graph.js";
 
 function formatPath(path: readonly PropertyKey[]): string {
   if (path.length === 0) return "$";
@@ -16,7 +16,7 @@ function formatPath(path: readonly PropertyKey[]): string {
 }
 
 export function assertNoExplicitUndefined(value: unknown): void {
-  const issue = findPersistibilityIssue(value);
+  const issue = inspectUndefinedAndCyclesOnly(value);
   if (issue !== undefined) {
     throw new Error(
       `Invalid persistible value: ${formatPath(issue.path)} ${issue.message}`,

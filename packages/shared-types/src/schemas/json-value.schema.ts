@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import type { JsonValue } from "../types.js";
+import { persistibleSchema } from "../validation/persistible-schema.js";
 
 export const JsonPrimitiveSchema = z.union([
   z.string(),
@@ -9,10 +10,12 @@ export const JsonPrimitiveSchema = z.union([
   z.null(),
 ]);
 
-export const JsonValueSchema: z.ZodType<JsonValue> = z.lazy(() =>
+const JsonValueStructuralSchema: z.ZodType<JsonValue> = z.lazy(() =>
   z.union([
     JsonPrimitiveSchema,
-    z.array(JsonValueSchema),
-    z.record(z.string(), JsonValueSchema),
+    z.array(JsonValueStructuralSchema),
+    z.record(z.string(), JsonValueStructuralSchema),
   ]),
 );
+
+export const JsonValueSchema = persistibleSchema(JsonValueStructuralSchema);

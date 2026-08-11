@@ -12,10 +12,11 @@ import { PlayerProfileSchema } from "./profile.schema.js";
 import { RelationshipSchema } from "./relationship.schema.js";
 import { ScheduledEventSchema } from "./scheduled-event.schema.js";
 import { PlayerStatsSchema } from "./stats.schema.js";
+import { persistibleSchema } from "../validation/persistible-schema.js";
 
 export const GameRunStatusSchema = z.enum(["active", "finished"]);
 
-export const GameStateSchema = z
+const GameStateStructuralSchema = z
   .object({
     runId: NonEmptyStringSchema,
     gameVersion: NonEmptyStringSchema,
@@ -58,3 +59,5 @@ export const GameStateSchema = z
       });
     }
   });
+
+export const GameStateSchema = persistibleSchema(GameStateStructuralSchema);

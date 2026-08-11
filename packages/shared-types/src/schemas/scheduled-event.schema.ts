@@ -6,6 +6,7 @@ import {
 } from "./common.schema.js";
 import { EventConditionGroupSchema } from "./events/conditions.schema.js";
 import { EventIdSchema } from "./events/event-common.schema.js";
+import { persistibleSchema } from "../validation/persistible-schema.js";
 
 export const ScheduledEventTriggerSchema = z.enum([
   "turn",
@@ -23,7 +24,7 @@ const ScheduledEventCommonShape = {
   consumed: z.boolean(),
 } as const;
 
-export const ScheduledEventSchema = z.discriminatedUnion("triggerType", [
+const ScheduledEventStructuralSchema = z.discriminatedUnion("triggerType", [
   z
     .object({
       ...ScheduledEventCommonShape,
@@ -53,3 +54,7 @@ export const ScheduledEventSchema = z.discriminatedUnion("triggerType", [
     })
     .strict(),
 ]);
+
+export const ScheduledEventSchema = persistibleSchema(
+  ScheduledEventStructuralSchema,
+);

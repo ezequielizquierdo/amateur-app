@@ -293,4 +293,41 @@ describe("game event schema", () => {
 
     expect(event).toEqual(snapshot);
   });
+
+  it.each([
+    ["known", (event: Record<string, unknown>) => event, "id"],
+    ["extra", (event: Record<string, unknown>) => event, "computed"],
+    [
+      "nested",
+      (event: Record<string, unknown>) =>
+        event.availability as Record<string, unknown>,
+      "minimumAge",
+    ],
+    [
+      "array index",
+      (event: Record<string, unknown>) => event.tags as unknown[],
+      "0",
+    ],
+  ] as const)(
+    "rejects a %s getter without executing it",
+    (_name, selectTarget, key) => {
+      const event = validEvent();
+      const target = selectTarget(event);
+      let getterCalls = 0;
+      Object.defineProperty(target, key, {
+        enumerable: true,
+        configurable: true,
+        get() {
+          getterCalls += 1;
+          throw new Error("boom");
+        },
+      });
+
+      expect(() => GameEventSchema.safeParse(event)).not.toThrow();
+      expect(GameEventSchema.safeParse(event).success).toBe(false);
+      expect(getterCalls).toBe(0);
+      expect(() => GameEventSchema.parse(event)).toThrow(ZodError);
+      expect(getterCalls).toBe(0);
+    },
+  );
 });

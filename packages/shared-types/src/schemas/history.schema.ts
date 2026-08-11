@@ -11,6 +11,7 @@ import {
   OutcomeIdSchema,
 } from "./events/event-common.schema.js";
 import { HistoryKeySchema } from "./history-key.schema.js";
+import { persistibleSchema } from "../validation/persistible-schema.js";
 
 function historyRecordSchema<TValue extends z.ZodType>(value: TValue) {
   return z
@@ -36,7 +37,7 @@ function historyRecordSchema<TValue extends z.ZodType>(value: TValue) {
     .pipe(z.record(HistoryKeySchema, value));
 }
 
-export const DecisionRecordSchema = z
+const DecisionRecordStructuralSchema = z
   .object({
     eventId: EventIdSchema,
     eventVersion: z.number().int().positive(),
@@ -48,6 +49,10 @@ export const DecisionRecordSchema = z
     immediateEffects: z.array(AppliedEffectSchema),
   })
   .strict();
+
+export const DecisionRecordSchema = persistibleSchema(
+  DecisionRecordStructuralSchema,
+);
 
 export const HistoryFlagValueSchema = z.union([
   z.boolean(),

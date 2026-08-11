@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { ZodError } from "zod";
 
 import {
   FootballStateSchema,
@@ -110,6 +111,47 @@ describe("shared structural schemas", () => {
   it("accepts a structurally valid game state", () => {
     expect(GameStateSchema.safeParse(validState()).success).toBe(true);
   });
+
+  it("rejects GameState accessors without executing them", () => {
+    const state = validState() as Record<string, unknown>;
+    let getterCalls = 0;
+    Object.defineProperty(state, "runId", {
+      enumerable: true,
+      get() {
+        getterCalls += 1;
+        throw new Error("boom");
+      },
+    });
+
+    expect(() => GameStateSchema.safeParse(state)).not.toThrow();
+    expect(GameStateSchema.safeParse(state).success).toBe(false);
+    expect(getterCalls).toBe(0);
+    expect(() => GameStateSchema.parse(state)).toThrow(ZodError);
+    expect(getterCalls).toBe(0);
+  });
+
+  it.each(["symbol", "non-enumerable", "sparse array", "prototype"])(
+    "rejects a GameState with an invalid persistibility %s",
+    (invalidity) => {
+      const state = validState() as Record<string, unknown>;
+      if (invalidity === "symbol") {
+        Object.defineProperty(state, Symbol("hidden"), {
+          enumerable: true,
+          value: true,
+        });
+      } else if (invalidity === "non-enumerable") {
+        Object.defineProperty(state, "hidden", {
+          enumerable: false,
+          value: true,
+        });
+      } else if (invalidity === "sparse array") {
+        state.relationships = new Array(2);
+      } else {
+        Object.setPrototypeOf(state, { custom: true });
+      }
+      expect(GameStateSchema.safeParse(state).success).toBe(false);
+    },
+  );
 
   it.each(["test", "a", "accepted_offer", "counter_2", "2_attempts"])(
     "accepts the history key %j in flags and counters",
@@ -319,6 +361,139 @@ describe("shared structural schemas", () => {
   it("accepts nested JsonValue data", () => {
     const value = { text: "ok", items: [1, true, null, { nested: "yes" }] };
     expect(JsonValueSchema.parse(value)).toEqual(value);
+  });
+
+  it("accepts canonical JsonValue containers", () => {
+    const nullPrototype = Object.assign(Object.create(null) as object, {
+      value: "ok",
+    });
+    const nonEnumerableIndex = ["ok"];
+    Object.defineProperty(nonEnumerableIndex, "0", {
+      enumerable: false,
+      value: "ok",
+    });
+    const shared = { value: "shared" };
+
+    expect(JsonValueSchema.safeParse(nullPrototype).success).toBe(true);
+    expect(JsonValueSchema.safeParse(nonEnumerableIndex).success).toBe(true);
+    expect(
+      JsonValueSchema.safeParse({ first: shared, second: shared }).success,
+    ).toBe(true);
+    expect(JsonValueSchema.safeParse(Object.freeze([1, 2])).success).toBe(true);
+    expect(JsonValueSchema.safeParse(Object.seal([1, 2])).success).toBe(true);
+    expect(JsonValueSchema.safeParse(-0).success).toBe(true);
+  });
+
+  it.each([
+    ["small sparse array", new Array(3)],
+    ["huge sparse array", new Array(4_000_000_000)],
+    ["custom array property", Object.assign([1], { custom: true })],
+    ["array Symbol key", Object.assign([1], { [Symbol("hidden")]: true })],
+    ["object Symbol key", { value: "ok", [Symbol("hidden")]: true }],
+    [
+      "nested Symbol key with function",
+      { nested: { [Symbol("hidden")]: () => true } },
+    ],
+    ["Symbol value", Symbol("value")],
+    ["Date", new Date(0)],
+    ["Map", new Map([["value", 1]])],
+    [
+      "class instance",
+      new (class Data {
+        value = 1;
+      })(),
+    ],
+  ])("rejects the non-canonical JsonValue %s", (_name, value) => {
+    expect(JsonValueSchema.safeParse(value).success).toBe(false);
+  });
+
+  it("rejects JsonValue accessors without executing them", () => {
+    let getterCalls = 0;
+    const getterValue = {};
+    Object.defineProperty(getterValue, "value", {
+      enumerable: true,
+      get() {
+        getterCalls += 1;
+        return "ok";
+      },
+    });
+    const setterValue = {};
+    Object.defineProperty(setterValue, "value", {
+      enumerable: true,
+      set(value: unknown) {
+        void value;
+      },
+    });
+    const accessorArray: unknown[] = ["ok"];
+    Object.defineProperty(accessorArray, "0", {
+      enumerable: true,
+      get() {
+        getterCalls += 1;
+        throw new Error("boom");
+      },
+    });
+
+    expect(JsonValueSchema.safeParse(getterValue).success).toBe(false);
+    expect(JsonValueSchema.safeParse(setterValue).success).toBe(false);
+    expect(JsonValueSchema.safeParse(accessorArray).success).toBe(false);
+    expect(getterCalls).toBe(0);
+  });
+
+  it("rejects hidden and cyclic JsonValue content", () => {
+    const hidden = { visible: true };
+    Object.defineProperty(hidden, "hidden", {
+      enumerable: false,
+      value: 1,
+    });
+    const arrayWithCustomHidden = [1];
+    Object.defineProperty(arrayWithCustomHidden, "hidden", {
+      enumerable: false,
+      value: 1,
+    });
+    const first: Record<string, unknown> = {};
+    const second: Record<string, unknown> = { first };
+    first.second = second;
+
+    expect(JsonValueSchema.safeParse(hidden).success).toBe(false);
+    expect(JsonValueSchema.safeParse(arrayWithCustomHidden).success).toBe(
+      false,
+    );
+    expect(JsonValueSchema.safeParse(first).success).toBe(false);
+  });
+
+  it("turns a revoked Proxy reflection failure into a failed safeParse", () => {
+    const { proxy, revoke } = Proxy.revocable({}, {});
+    revoke();
+
+    expect(() => JsonValueSchema.safeParse(proxy)).not.toThrow();
+    expect(JsonValueSchema.safeParse(proxy).success).toBe(false);
+  });
+
+  it("does not inspect a hostile prototype to discriminate reflection results", () => {
+    let descriptorTrapCalls = 0;
+    const hostilePrototype = new Proxy(
+      {},
+      {
+        getOwnPropertyDescriptor() {
+          descriptorTrapCalls += 1;
+          throw new Error("prototype-descriptor-boom");
+        },
+      },
+    );
+    const value = new Proxy(
+      {},
+      {
+        getPrototypeOf() {
+          return hostilePrototype;
+        },
+      },
+    );
+
+    expect(() => JsonValueSchema.safeParse(value)).not.toThrow();
+    expect(JsonValueSchema.safeParse(value).success).toBe(false);
+    expect(descriptorTrapCalls).toBe(0);
+    expect(() => JsonValueSchema.parse(value)).toThrow(ZodError);
+    expect(descriptorTrapCalls).toBe(0);
   });
 
   it.each([

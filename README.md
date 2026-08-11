@@ -100,15 +100,17 @@ Está implementado:
 - origen e índice de cada efecto aplicado, payload solicitado y snapshots tipados;
 - `DecisionRecord` con versión del acontecimiento, outcome opcional e `immediateEffects` evolucionado;
 - `ScheduledEvent` como unión discriminada de triggers absolutos;
-- contrato funcional y técnico del futuro resolvedor determinista de efectos;
+- evaluadores internos para las diez familias de efectos;
+- `resolveGameEffects` como frontera pública, pura, determinista y atómica;
+- aplicación secuencial de lotes de efectos sobre una copia de trabajo validada;
+- registros `AppliedEffect`, programación persistida y errores tipados del resolvedor;
 - `GAME_VERSION = "0.3.0"`.
 
 Todavía no está implementado:
 
-- `resolveGameEffects` y la aplicación runtime de efectos;
-- atomicidad, rollback y errores runtime del resolvedor;
-- conversión runtime de follow-ups en `ScheduledEvent`;
-- resolución de elecciones;
+- resolución completa de elecciones y outcomes;
+- construcción de `DecisionRecord` a partir de una elección resuelta;
+- integración de los follow-ups declarados directamente por opciones y outcomes;
 - selección determinista de outcomes;
 - scheduler runtime;
 - selector del siguiente acontecimiento;
@@ -117,13 +119,15 @@ Todavía no está implementado:
 - frontend;
 - base de datos o persistencia externa.
 
-El contrato permite describir y validar acontecimientos como datos, pero el juego
-todavía no puede resolverlos. Tampoco incluye migraciones entre versiones de
-partidas.
+El motor ya puede aplicar de forma determinista un lote de `GameEffect` y devolver
+el nuevo estado junto con sus registros auditables. Todavía no puede resolver un
+`GameEvent` completo, elegir outcomes ni construir el registro de una decisión.
+Tampoco incluye migraciones entre versiones de partidas.
 
-Las reglas de orden secuencial, atomicidad, operaciones numéricas, relaciones,
-follow-ups, auditoría y errores del resolvedor ya están definidas. El contrato
-persistible de `AppliedEffect` ya está implementado, pero el resolvedor todavía
-no existe y el juego no puede aplicar efectos ni resolver acontecimientos.
+`resolveGameEffects` implementa el orden secuencial, la atomicidad sobre una copia,
+las operaciones numéricas, las relaciones, la programación mediante efectos, la
+auditoría y los errores tipados. Valida el estado antes y después del lote y
+recalcula `footballLevel` una sola vez al finalizar. Esta capacidad no equivale a
+la resolución completa de acontecimientos.
 La evolución incompatible elevó `GAME_VERSION` a `"0.3.0"`; no se implementaron
 migraciones porque no existen partidas persistidas de producción.

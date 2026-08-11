@@ -545,7 +545,7 @@ Cada DecisionRecord coincidente cuenta como una resolución y varias resolucione
 
 `history.completedEventIds` no será consultado por EventHistoryCondition. El campo permanece en el modelo actual, pero su posible derivación, sincronización o eliminación futura está fuera del alcance de este micro-commit. No debe combinarse con `history.decisions`, porque una divergencia entre ambas colecciones podría producir resultados contradictorios.
 
-Estas reglas describen el contrato funcional del evaluador futuro. Todavía no se implementan la evaluación runtime de condiciones, la selección de eventos, la aplicación de efectos, la resolución de opciones, el scheduler ni el azar.
+Estas reglas están implementadas por el evaluador runtime de condiciones. También está implementada la aplicación atómica de lotes de `GameEffect` mediante `resolveGameEffects`. Todavía no se implementan la selección de eventos, la resolución completa de opciones y outcomes, el scheduler ni el azar.
 10. Opciones
 type EventChoice = {
   id: ChoiceId;
@@ -797,11 +797,11 @@ type ScheduleEventEffect = {
 
 Una opción también puede declarar followUps directamente. Ambas formas producen el mismo resultado interno.
 
-11.11. Contrato del resolvedor determinista
+11.11. Resolvedor determinista implementado
 
-El futuro resolvedor aplicará los efectos en el orden exacto del array. Cada efecto leerá el resultado del efecto anterior; no se agruparán ni reordenarán efectos, y varios efectos sobre el mismo campo se acumularán secuencialmente.
+`resolveGameEffects` aplica los efectos en el orden exacto del array. Cada efecto lee el resultado del efecto anterior; no se agrupan ni reordenan efectos, y varios efectos sobre el mismo campo se acumulan secuencialmente.
 
-La resolución del lote será completamente atómica. Primero se validará el GameState inicial y se creará una copia de trabajo. El estado original nunca se modificará. Durante la aplicación se comprobarán las reglas locales de cada efecto. Al finalizar se recalculará footballLevel y se validará el GameState resultante. Cualquier error descartará la copia de trabajo y todos los cambios del lote.
+La resolución del lote es completamente atómica. Primero se valida el GameState inicial y se crea una copia de trabajo mediante `structuredClone`. El estado original nunca se modifica. Durante la aplicación se comprueban las reglas locales de cada efecto. Al finalizar se recalcula footballLevel exactamente una vez desde los atributos finales y se valida el GameState resultante. Cualquier error descarta la copia de trabajo y todos los cambios del lote; no se aplican operaciones inversas ni se devuelven resultados parciales.
 
 No se validará el GameState completo después de cada efecto individual, porque una secuencia válida puede atravesar estados temporalmente inconsistentes mientras actualiza campos relacionados.
 
@@ -876,7 +876,7 @@ DeactivateRelationshipEffect sólo establece isActive en false. No elimina la re
 
 11.17. Conversión de follow-ups
 
-ScheduleEventEffect convertirá FollowUpDefinition en ScheduledEvent con estas reglas:
+ScheduleEventEffect convierte FollowUpDefinition en ScheduledEvent con estas reglas:
 
 turn.afterTurns: state.currentTurn + afterTurns;
 age.atAge: valor absoluto;
@@ -885,9 +885,9 @@ condition: conserva EventConditionGroup.
 
 afterTurns siempre programa en el futuro. Un atAge menor que la edad actual o un atSeason menor que currentSeason produce TRIGGER_IN_THE_PAST y rollback. Un valor igual a la edad o temporada actual es válido y queda elegible en la próxima evaluación del scheduler. Un acontecimiento programado no se consume recursivamente dentro de la misma resolución.
 
-El ID del ScheduledEvent será determinista e incluirá runId, currentTurn, sourceEventId, sourceEventVersion, choiceId, la phase choice u outcome, outcomeId cuando corresponda y sourceEffectIndex. Los componentes variables se codificarán con su longitud para evitar composiciones ambiguas. No se utilizarán UUID, Math.random, Date ni hashing externo. Un ID duplicado produce error y rollback.
+El ID del ScheduledEvent es determinista e incluye runId, currentTurn, sourceEventId, sourceEventVersion, choiceId, la phase choice u outcome, outcomeId cuando corresponde y sourceEffectIndex. Los componentes variables se codifican con su longitud para evitar composiciones ambiguas. No se utilizan UUID, Math.random, Date ni hashing externo. Un ID duplicado produce error y rollback. El resultado se agrega a `nextState.scheduledEvents`, pero no existe un scheduler runtime ni consumo recursivo durante la misma resolución.
 
-11.18. Contexto y API futura
+11.18. Contexto y API pública
 
 Contrato conceptual del contexto:
 
@@ -902,11 +902,11 @@ type EffectResolutionContext = {
   source: AppliedEffectSource;
 };
 
-AppliedEffectSource se utiliza en cada AppliedEffect persistido y se reutilizará en EffectResolutionContext. En AppliedEffect, sourceEffectIndex es un entero no negativo y representa la posición dentro del array de efectos de esa fase.
+AppliedEffectSource se utiliza en cada AppliedEffect persistido y se reutiliza en EffectResolutionContext. En AppliedEffect, sourceEffectIndex es un entero no negativo y representa, desde cero, la posición dentro del array de efectos de esa fase.
 
-La combinación de source.phase, source.outcomeId cuando corresponda y sourceEffectIndex identificará el origen exacto del registro. Esta metadata debe persistirse porque los efectos directos de una opción y los de un outcome pueden resolverse en invocaciones diferentes, y ambos arrays comienzan en el índice cero.
+La combinación de source.phase, source.outcomeId cuando corresponde y sourceEffectIndex identifica el origen exacto del registro. Esta metadata debe persistirse porque los efectos directos de una opción y los de un outcome pueden resolverse en invocaciones diferentes, y ambos arrays comienzan en el índice cero. Si un `RelationshipValueEffect` coincide con varias relaciones, todos los registros producidos comparten el índice del efecto original.
 
-La API pública futura será una única función:
+La API pública es una única función:
 
 resolveGameEffects(
   effects,
@@ -917,11 +917,11 @@ resolveGameEffects(
   appliedEffects;
 }
 
-El resolvedor de un efecto individual será interno. Un array effects vacío será válido y devolverá una copia equivalente del estado sin registros. La respuesta no incluirá previousState ni scheduledEventIds y este micro-commit no creará ChoiceResolution.
+El resolvedor de un efecto individual es interno. Un array effects vacío es válido y devuelve una copia equivalente del estado sin registros, con footballLevel derivado desde los atributos finales. La respuesta no incluye previousState ni scheduledEventIds. La API no crea ChoiceResolution ni DecisionRecord; appliedEffects se devuelve para que una futura resolución completa de elecciones construya ese registro.
 
 11.19. Errores del resolvedor
 
-La futura clase EventEffectResolutionError expondrá code y, cuando correspondan, effectIndex, effectType y cause.
+La clase pública EventEffectResolutionError expone code y, cuando corresponden, effectIndex, effectType y cause.
 
 Códigos iniciales:
 
@@ -934,7 +934,7 @@ SCHEDULED_EVENT_ID_CONFLICT;
 TRIGGER_IN_THE_PAST;
 INVALID_RESULT_STATE.
 
-La API lanzará este error y el rollback será total.
+La API lanza este error para fallos controlados y el rollback es total. Los errores atribuibles a un efecto incluyen effectIndex y effectType. INVALID_RESULT_STATE corresponde a la validación final y no se atribuye a un efecto particular. Los errores internos inesperados se propagan sin convertirse.
 
 12. Resultados probabilísticos
 type ProbabilisticOutcome = {
@@ -1244,7 +1244,7 @@ migrar contenido en el futuro.
 
 outcomeId estará ausente cuando la opción no tenga resultados probabilísticos.
 eventVersion debe ser un entero positivo y no recibe un valor por defecto silencioso.
-immediateEffects utiliza la unión persistible estricta AppliedEffect. La forma abierta anterior ya no es válida. El esquema no impone unicidad ni orden entre source y sourceEffectIndex; esas comprobaciones corresponderán al futuro resolvedor.
+immediateEffects utiliza la unión persistible estricta AppliedEffect. La forma abierta anterior ya no es válida. El esquema no impone unicidad ni orden entre source y sourceEffectIndex; `resolveGameEffects` garantiza el origen y orden de los registros que produce.
 
 20. Resultado de resolución
 
@@ -1354,13 +1354,13 @@ La igualdad real entre los dos snapshots de ignored será responsabilidad del re
 
 deactivate_relationship tiene siempre relaciones completas presentes en previous y resulting. resulting.isActive es false. El resolvedor garantizará la coherencia entre applied, no_change y los valores reales.
 
-relationship_value incluye relationshipId como campo separado y tipado. El futuro resolvedor producirá un registro por relación; previous y resulting son snapshots escalares con números presentes. No utiliza un path libre.
+relationship_value incluye relationshipId como campo separado y tipado. El resolvedor produce un registro por relación; previous y resulting son snapshots escalares con números presentes. No utiliza un path libre.
 
 schedule_event sólo admite status applied, tiene previous siempre ausente y resulting con el ScheduledEvent absoluto. requested conserva el FollowUpDefinition relativo.
 
 shared-types valida con Zod discriminantes, requested exacto, source, sourceEffectIndex, status permitido, clase de snapshot, propiedades adicionales y valores persistibles. AppliedEffectSchema es strict, rechaza undefined explícito, ciclos, Date, funciones, BigInt, NaN e Infinity, acepta referencias compartidas no circulares y no transforma ni muta los datos. Mantiene el comportamiento estándar de parse y safeParse. No realiza comparaciones profundas.
 
-game-engine garantizará posteriormente la correspondencia con el efecto real, la igualdad de no_change e ignored, la diferencia de applied, el orden y cantidad de registros, los snapshots reales y la semántica del resultado.
+game-engine garantiza durante la resolución la correspondencia con el efecto real, la igualdad de no_change e ignored, la diferencia de applied, el orden y cantidad de registros, los snapshots reales y la semántica del resultado.
 
 Los únicos exports públicos de este contrato en shared-types son AppliedEffectSchema, AppliedEffect, AppliedEffectSourceSchema y AppliedEffectSource. Los esquemas de status, snapshots, payloads y variantes permanecen internos.
 
@@ -1609,9 +1609,9 @@ interfaz;
 API;
 base de datos.
 
-La evolución persistible de AppliedEffect y el evaluador de condiciones se implementaron en micro-commits posteriores. La aplicación runtime de efectos y los demás componentes enumerados continúan fuera del alcance actual.
+La evolución persistible de AppliedEffect, el evaluador de condiciones y la aplicación runtime de lotes de efectos mediante `resolveGameEffects` se implementaron en micro-commits posteriores. Continúan fuera del alcance actual `ChoiceResolution`, la construcción de `DecisionRecord`, la resolución completa de opciones y outcomes, la selección probabilística, el scheduler, el selector del siguiente acontecimiento, el catálogo real, la interfaz, la API y la base de datos.
 
-El primer commit técnico posterior a esta documentación deberá limitarse a los esquemas y tipos del contrato de acontecimientos y a las evoluciones estructurales persistibles enumeradas. No incluirá evaluación, aplicación, selección runtime ni catálogo.
+El primer commit técnico se limitó a los esquemas, tipos y evoluciones estructurales persistibles enumeradas. La evaluación de condiciones y la aplicación de efectos se incorporaron después como micro-commits separados; la selección runtime y el catálogo continúan pendientes.
 
 27. Criterios de aceptación de la especificación
 

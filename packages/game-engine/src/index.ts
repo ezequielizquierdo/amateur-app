@@ -6,6 +6,14 @@ export { clampStat } from "./clamp-stat.js";
 export { evaluateEventCondition } from "./events/conditions/evaluate-event-condition.js";
 export { evaluateEventConditionGroup } from "./events/conditions/evaluate-event-condition-group.js";
 export {
+  EventEffectResolutionError,
+  type EventEffectResolutionErrorCode,
+} from "./events/event-effect-resolution-error.js";
+export {
+  resolveGameEffects,
+  type EffectResolutionContext,
+} from "./events/resolve-game-effects.js";
+export {
   applyInitialTraits,
   type InitialTraitResult,
 } from "./initial-state/apply-initial-traits.js";

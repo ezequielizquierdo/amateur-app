@@ -388,7 +388,7 @@ No se permitirá consultar cualquier propiedad mediante un string libre.
 9.3. Condiciones sobre flags
 type FlagCondition = {
   type: "flag";
-  key: string;
+  key: HistoryKey;
   operator:
     | "equals"
     | "notEquals"
@@ -418,6 +418,8 @@ Una clave ausente produce false tanto para equals como para notEquals. Para cons
 false, 0 y el string vacío son valores presentes.
 Las comparaciones no realizan coerción, trim ni normalización.
 
+HistoryKey utiliza el formato `^[a-z0-9]+(?:_[a-z0-9]+)*$` y reserva `__proto__`, `prototype` y `constructor`. No aplica trim, lowercase automático, normalización ni coerción. `accepted_offer`, `missed_matches` y `counter_2` son válidos; `__proto__`, `" exact "`, `UPPERCASE` y `with-dash` son inválidos. El schema concreto permanece interno.
+
 Ejemplos resumidos:
 
 | Estado de la flag | exists | notExists | equals false | notEquals false |
@@ -428,7 +430,7 @@ Ejemplos resumidos:
 9.4. Condiciones sobre contadores
 type CounterCondition = {
   type: "counter";
-  key: string;
+  key: HistoryKey;
   operator:
     | "equals"
     | "notEquals"
@@ -449,6 +451,8 @@ Ejemplo:
 }
 
 Un contador inexistente se interpretará como 0 para los operadores numéricos. Esta política es diferente de la aplicada a las flags: la existencia de una flag y el valor por defecto de un contador no deben compartir accidentalmente la misma implementación.
+
+El threshold de `CounterCondition` puede ser cualquier número finito, incluido un valor fraccionario como `1.5`. Esta regla es independiente del contrato entero del valor persistido.
 
 9.5. Condiciones sobre relaciones
 type RelationshipSelector = {
@@ -707,24 +711,25 @@ La resolución completa debe respetar las invariantes de lesión y retiro.
 11.5. Flags
 type FlagEffect = {
   type: "flag";
-  key: string;
+  key: HistoryKey;
   value: HistoryFlagValue;
 };
 11.6. Contadores
 type CounterEffect = {
   type: "counter";
-  key: string;
+  key: HistoryKey;
   operation: "increment" | "set";
   value: number;
 };
 
 Reglas:
 
-Los contadores serán enteros.
-set exige un entero igual o mayor que cero.
-increment admite cualquier entero: negativo, cero o positivo.
-set e increment rechazan valores fraccionarios.
-Durante la futura resolución runtime, el resultado se limitará por defecto a un mínimo de cero. Esa lógica todavía no está implementada.
+Los contadores persistidos son safe integers no negativos.
+set exige un safe integer igual o mayor que cero.
+increment admite cualquier safe integer: negativo, cero o positivo.
+set e increment rechazan valores fraccionarios, no finitos y enteros fuera del rango seguro.
+La resolución runtime limita el underflow a cero y exige que el resultado continúe siendo un safe integer no negativo. Un overflow produce `INVALID_NUMERIC_RESULT` y rollback.
+Sobre una key ausente, set 0 crea el contador; increment 0 o negativo que permanezca en cero no lo crea. Una key existente se conserva aunque el resultado sea cero.
 Las excepciones a esta política quedan fuera de la primera versión.
 11.7. Modificación de relaciones
 type RelationshipValueEffect = {
@@ -1366,6 +1371,8 @@ Los únicos exports públicos de este contrato en shared-types son AppliedEffect
 
 Este cambio fue incompatible y modificó indirectamente DecisionRecord.immediateEffects. Su implementación elevó GAME_VERSION a "0.3.0". No se implementó una migración porque no existen partidas persistidas de producción. Las versiones internas de los package.json no tienen que coincidir con GAME_VERSION.
 
+El contrato posterior de `HistoryKey` y contadores persistidos como safe integers no negativos elevó la versión actual a `GAME_VERSION = "0.4.0"`. El hardening de objetos runtime no representables fielmente en JSON mantuvo esa versión. `GAME_VERSION` versiona cambios incompatibles del formato JSON persistido, no cada endurecimiento de inputs runtime.
+
 22. Almacenamiento del contenido
 
 Los acontecimientos se almacenarán inicialmente fuera del motor.
@@ -1405,7 +1412,19 @@ Más adelante, el contenido podrá migrarse a JSON o a PostgreSQL sin cambiar el
 
 23. Validación del catálogo
 
-GameEventSchema valida públicamente la estructura declarativa mediante Zod. Rechaza propiedades explícitamente iguales a undefined, referencias circulares y valores no persistibles. Acepta referencias compartidas que no formen un ciclo y no transforma ni muta los datos recibidos. `parse` y `safeParse` conservan el comportamiento estándar de Zod: `parse` lanza `ZodError` ante datos inválidos y `safeParse` devuelve un resultado con `success: false`.
+GameEventSchema valida públicamente la estructura declarativa mediante Zod y aplica una frontera persistible antes de la validación estructural. Rechaza propiedades explícitamente iguales a undefined, referencias circulares y valores no persistibles. Acepta referencias compartidas que no formen un ciclo y no transforma ni muta los datos recibidos. `parse` y `safeParse` conservan el comportamiento estándar de Zod: `parse` lanza `ZodError` ante datos inválidos y `safeParse` devuelve un resultado con `success: false`.
+
+Las fronteras persistibles independientes son `GameStateSchema`, `GameEventSchema`, `AppliedEffectSchema`, `DecisionRecordSchema`, `ScheduledEventSchema` y `JsonValueSchema`. Los schemas parciales menores quedan protegidos al aparecer dentro de estas raíces; no todos poseen una frontera adversarial propia.
+
+Un valor aceptado por estas fronteras representa contenido JSON sin pérdida semánticamente relevante durante un JSON round-trip. No se promete conservar identidad de referencias compartidas, prototype nulo, atributos `writable` o `configurable`, ni distinguir `0` de `-0`.
+
+Las fronteras rechazan accessors propios sin ejecutar getters o setters ordinarios durante la prevalidación, claves o valores `Symbol`, propiedades string no enumerables de objetos, sparse arrays, ciclos y prototypes no soportados. Admiten plain objects, objetos con prototype nulo, arrays ordinarios densos y referencias compartidas no circulares. Un índice data-property no enumerable de un array puede ser válido porque JSON serializa arrays por posición; los arrays no admiten holes, propiedades custom, claves `Symbol` ni índices accessor.
+
+Las class instances, `Date`, `Map`, `Set`, `RegExp`, typed arrays, boxed primitives y objetos con prototype custom no son persistibles. La validación de Proxies es best-effort: las excepciones reflexivas capturables se convierten en errores de validación, pero no se pueden impedir efectos laterales de traps ni convertir el proceso en una sandbox.
+
+`assertNoExplicitUndefined` no es el validador completo de persistibilidad. Se limita a detectar `undefined` explícito y ciclos, conservar paths útiles y aceptar referencias compartidas no circulares. Inspecciona data descriptors sin ejecutar accessors y omite estos últimos; la política completa corresponde a las seis fronteras persistibles.
+
+Para `GameState`, el orden es validación completa y luego `JSON.stringify`, nunca serialización previa a la validación.
 
 Antes de publicar contenido, el catálogo debe comprobar:
 
@@ -1610,6 +1629,8 @@ API;
 base de datos.
 
 La evolución persistible de AppliedEffect, el evaluador de condiciones y la aplicación runtime de lotes de efectos mediante `resolveGameEffects` se implementaron en micro-commits posteriores. Continúan fuera del alcance actual `ChoiceResolution`, la construcción de `DecisionRecord`, la resolución completa de opciones y outcomes, la selección probabilística, el scheduler, el selector del siguiente acontecimiento, el catálogo real, la interfaz, la API y la base de datos.
+
+También continúan pendientes la unicidad de IDs de relaciones y de `ScheduledEvent` dentro de `GameState`, la validación integral del catálogo, las repeat/cooldown policies runtime y el consumo de eventos programados.
 
 El primer commit técnico se limitó a los esquemas, tipos y evoluciones estructurales persistibles enumeradas. La evaluación de condiciones y la aplicación de efectos se incorporaron después como micro-commits separados; la selección runtime y el catálogo continúan pendientes.
 

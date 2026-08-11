@@ -59,7 +59,7 @@ const state = createInitialGameState({
 ```
 
 Si no se proporciona `initialRelationships`, la partida comienza con un array
-vacío. El motor utiliza internamente `GAME_VERSION`, actualmente `"0.3.0"`.
+vacío. El motor utiliza internamente `GAME_VERSION`, actualmente `"0.4.0"`.
 
 Las versiones `0.1.0` de los `package.json` corresponden a las versiones internas
 de los paquetes y no tienen que coincidir con `GAME_VERSION`.
@@ -83,6 +83,34 @@ import { deserializeGameState } from "@amateur-app/game-engine";
 const restoredState = deserializeGameState(serialized);
 ```
 
+La validación ocurre antes de `JSON.stringify`. Las fronteras persistibles
+independientes son `GameStateSchema`, `GameEventSchema`, `AppliedEffectSchema`,
+`DecisionRecordSchema`, `ScheduledEventSchema` y `JsonValueSchema`. Aceptan datos
+JSON sin pérdida semántica de contenido: rechazan ciclos, accessors propios,
+claves o valores `Symbol`, propiedades ocultas de objetos, prototipos no
+soportados y sparse arrays. Las referencias compartidas no circulares son
+válidas, aunque el JSON round-trip no conserva su identidad.
+
+Los objetos planos, los objetos con prototype nulo y los arrays ordinarios son
+válidos. En objetos, una propiedad string no enumerable es inválida; en arrays,
+un índice data-property no enumerable puede ser válido porque JSON serializa por
+posición. Los arrays no admiten holes, propiedades custom, claves `Symbol` ni
+índices accessor. La inspección de Proxies es best-effort: se convierten en
+errores de validación las excepciones reflexivas capturables, pero JavaScript no
+permite impedir los efectos laterales de traps ni convertir la validación en una
+sandbox.
+
+`assertNoExplicitUndefined` no es el validador persistible completo. Conserva su
+contrato focalizado en `undefined` explícito, ciclos, paths útiles y referencias
+compartidas válidas. Inspecciona data descriptors y omite accessors sin
+ejecutarlos.
+
+Las claves dinámicas de flags y contadores usan internamente el contrato
+`HistoryKey`: segmentos alfanuméricos en minúsculas separados por un único guion
+bajo, sin trim, coerción ni normalización. Los nombres `__proto__`, `prototype` y
+`constructor` están reservados. Los contadores persistidos son safe integers no
+negativos; sus incrementos pueden ser safe integers negativos, cero o positivos.
+
 ## Estado actual
 
 Está implementado:
@@ -104,7 +132,9 @@ Está implementado:
 - `resolveGameEffects` como frontera pública, pura, determinista y atómica;
 - aplicación secuencial de lotes de efectos sobre una copia de trabajo validada;
 - registros `AppliedEffect`, programación persistida y errores tipados del resolvedor;
-- `GAME_VERSION = "0.3.0"`.
+- claves dinámicas `HistoryKey` y contadores persistidos como safe integers no negativos;
+- hardening de las seis fronteras persistibles;
+- `GAME_VERSION = "0.4.0"`.
 
 Todavía no está implementado:
 
@@ -115,6 +145,9 @@ Todavía no está implementado:
 - scheduler runtime;
 - selector del siguiente acontecimiento;
 - catálogo real de acontecimientos;
+- validación integral del catálogo;
+- unicidad de IDs de relaciones y de `ScheduledEvent` dentro de `GameState`;
+- selección y consumo runtime de eventos programados;
 - API o servidor HTTP;
 - frontend;
 - base de datos o persistencia externa.
@@ -129,5 +162,10 @@ las operaciones numéricas, las relaciones, la programación mediante efectos, l
 auditoría y los errores tipados. Valida el estado antes y después del lote y
 recalcula `footballLevel` una sola vez al finalizar. Esta capacidad no equivale a
 la resolución completa de acontecimientos.
-La evolución incompatible elevó `GAME_VERSION` a `"0.3.0"`; no se implementaron
-migraciones porque no existen partidas persistidas de producción.
+La evolución de `AppliedEffect` elevó históricamente `GAME_VERSION` a `"0.3.0"`.
+El contrato posterior de `HistoryKey` y safe counters lo elevó a la versión
+actual `"0.4.0"`. El hardening de objetos runtime no representables fielmente en
+JSON no cambió el formato persistido y mantuvo esa versión. `GAME_VERSION`
+versiona cambios incompatibles del formato JSON, no cada endurecimiento de la
+validación. No se implementaron migraciones porque no existen partidas
+persistidas de producción.

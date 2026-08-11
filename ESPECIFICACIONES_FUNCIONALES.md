@@ -60,6 +60,8 @@ En esta etapa, el modelo almacena la información necesaria para que, posteriorm
 
 Todo dato que pueda modificar una decisión futura debe poder guardarse.
 
+Los valores aceptados por una frontera persistible representan datos JSON y no deben perder contenido semánticamente relevante durante un JSON round-trip. No se exige conservar la identidad de referencias compartidas, el prototype nulo, los atributos `writable` o `configurable`, ni distinguir semánticamente `0` de `-0`.
+
 Ejemplos:
 
 * faltar a un partido importante;
@@ -608,10 +610,12 @@ type DecisionRecord = {
 
 type HistoryFlagValue = boolean | number | string;
 
+type HistoryKey = string;
+
 type GameHistory = {
   decisions: DecisionRecord[];
-  flags: Record<string, HistoryFlagValue>;
-  counters: Record<string, number>;
+  flags: Record<HistoryKey, HistoryFlagValue>;
+  counters: Record<HistoryKey, number>;
 
   completedEventIds: string[];
   recentEventIds: string[];
@@ -622,6 +626,8 @@ type GameHistory = {
 ```
 
 `eventVersion` es un entero positivo obligatorio y no recibe un valor por defecto silencioso. `outcomeId` está ausente cuando la decisión no produjo un resultado probabilístico.
+
+`HistoryKey` utiliza el formato `^[a-z0-9]+(?:_[a-z0-9]+)*$`. `accepted_offer`, `missed_matches` y `counter_2` son ejemplos válidos; `__proto__`, `" exact "`, `UPPERCASE` y `with-dash` son inválidos. Los nombres `__proto__`, `prototype` y `constructor` están reservados. No se aplica trim, lowercase automático, normalización ni coerción. El schema concreto que aplica esta regla es un detalle interno del contrato.
 
 `AppliedEffect` es una unión discriminada estricta por las diez familias de `GameEffect`. Cada registro conserva `source`, `sourceEffectIndex`, `status`, el payload solicitado en `requested` sin repetir `type`, y snapshots anterior y resultante tipados para su familia. No admite `target`, paths ni campos arbitrarios. Las variantes internas de `life_state` y `football_state` mantienen correlacionados `field`, `operation` y `value`.
 
@@ -635,13 +641,15 @@ Ejemplos:
 
 ```ts
 {
-  rejectedFirstClubTrial: true,
-  apologizedToFormerTeam: false,
-  abandonedSecondarySchoolForFootball: false,
-  agentHidOffer: true,
-  promisedPartnerNotToRelocate: true
+  rejected_first_club_trial: true,
+  apologized_to_former_team: false,
+  abandoned_secondary_school_for_football: false,
+  agent_hid_offer: true,
+  promised_partner_not_to_relocate: true
 }
 ```
+
+Las flags admiten valores `boolean`, números finitos o `string`. El string vacío es un valor válido y presente, aunque una key vacía es inválida. Una flag nueva se crea; una existente puede sobrescribirse sólo conservando el tipo del valor. Repetir el mismo valor produce `no_change` y cambiar el tipo produce error.
 
 ## Contadores
 
@@ -651,15 +659,17 @@ Ejemplos:
 
 ```ts
 {
-  missedMatches: 3,
-  missedImportantMatches: 1,
-  brokenPromises: 2,
-  clubTrialRejections: 2,
-  majorInjuries: 1,
-  familySacrificesForFootball: 4,
-  footballSacrificesForFamily: 2
+  missed_matches: 3,
+  missed_important_matches: 1,
+  broken_promises: 2,
+  club_trial_rejections: 2,
+  major_injuries: 1,
+  family_sacrifices_for_football: 4,
+  football_sacrifices_for_family: 2
 }
 ```
+
+Cada contador persistido debe cumplir `Number.isSafeInteger(value) && value >= 0`. `set` acepta safe integers no negativos e `increment` acepta safe integers negativos, cero o positivos. El resultado también debe ser un safe integer no negativo; un overflow produce `INVALID_NUMERIC_RESULT`. Un contador ausente parte de cero, el underflow se limita a cero y las keys persistidas en cero no se eliminan.
 
 ## Acontecimientos recientes
 
@@ -707,6 +717,8 @@ type ScheduledEvent = ScheduledEventCommon & (
 Para las condiciones sobre flags, `exists` y `notExists` consultan si la clave es una propiedad propia de `history.flags`. `equals` y `notEquals` requieren que la clave exista; por lo tanto, una flag ausente produce false para ambas comparaciones de valor. Los valores false, 0 y string vacío se consideran presentes. No se utiliza truthiness, coerción, trim ni normalización.
 
 Los contadores ausentes se interpretan como 0. Esta regla es específica de los contadores y no debe confundirse con la semántica de existencia de las flags.
+
+`CounterCondition` puede comparar ese valor persistido contra cualquier número finito, incluido un valor fraccionario como `1.5`; su threshold no se restringe a enteros.
 
 `EventHistoryCondition` utiliza exclusivamente `history.decisions`. Cuenta cada DecisionRecord cuyo eventId coincida mediante igualdad estricta: `completed` exige al menos uno, `notCompleted` exige cero y `completedAtLeast` compara el total con el count solicitado. Cada registro coincidente cuenta por separado; eventVersion, choiceId y outcomeId no alteran el conteo. `history.completedEventIds` permanece en el modelo, pero no se consulta ni se combina con decisions para esta evaluación. Su posible derivación, sincronización o eliminación futura queda fuera de este micro-commit.
 
@@ -759,7 +771,7 @@ type GameState = {
 ## Reglas técnicas
 
 * `runId` identifica la partida.
-* `gameVersion` permite identificar la versión del formato de la partida. En esta etapa el motor utiliza la constante `GAME_VERSION = "0.3.0"` y no recibe la versión desde el llamador.
+* `gameVersion` permite identificar la versión del formato de la partida. En esta etapa el motor utiliza la constante `GAME_VERSION = "0.4.0"` y no recibe la versión desde el llamador.
 * `seed` permitirá reproducir resultados.
 * `currentSeason` comienza en `1`.
 * `currentTurn` comienza en `0`.
@@ -839,7 +851,7 @@ Ningún módulo debe modificar estadísticas sin asegurar el rango válido.
 
 `resolveGameEffects(effects, state, context)` devuelve `nextState` y `appliedEffects`. Los efectos se aplican en el orden exacto del array y cada uno lee el resultado del anterior. No se agrupan ni reordenan. La resolución es atómica sobre una copia de trabajo creada con `structuredClone`: se valida el estado inicial, se comprueban reglas locales durante la aplicación, se recalcula `footballLevel` exactamente una vez al terminar y se valida el estado final. Un error descarta todo el lote y el `GameState` original nunca se modifica. No se valida el estado completo entre efectos porque una transición coordinada puede ser temporalmente inconsistente.
 
-`set` reemplaza, `add` suma, `multiply` multiplica y `clear` elimina una propiedad opcional sin asignar `undefined`. Un resultado `NaN` o infinito será un error. El clamp se aplicará después de cada efecto: las escalas de estadísticas, atributos, confianza, reputación y relaciones quedan entre `0` y `100`; `salary` y `marketValue` tienen mínimo `0` sin máximo; los contadores son enteros con mínimo `0`. Los valores fraccionarios son válidos donde el esquema persistible los admite, multiplicar por cero es válido y los multiplicadores negativos se limitan según el campo. `footballLevel` no se modifica directamente.
+`set` reemplaza, `add` suma, `multiply` multiplica y `clear` elimina una propiedad opcional sin asignar `undefined`. Un resultado `NaN` o infinito será un error. El clamp se aplicará después de cada efecto: las escalas de estadísticas, atributos, confianza, reputación y relaciones quedan entre `0` y `100`; `salary` y `marketValue` tienen mínimo `0` sin máximo; los contadores persisten como safe integers no negativos. Los valores fraccionarios son válidos donde el esquema persistible los admite, multiplicar por cero es válido y los multiplicadores negativos se limitan según el campo. `footballLevel` no se modifica directamente.
 
 `numberOfChildren` sólo admite `set` con entero no negativo o `add` con entero. Un resultado negativo produce error y rollback, sin clamp ni cambios implícitos sobre `relationshipStatus`.
 
@@ -876,6 +888,20 @@ Los únicos exports públicos de este contrato son `AppliedEffectSchema`, `Appli
 La API lanza `EventEffectResolutionError`, con `code` y campos opcionales `effectIndex`, `effectType` y `cause`. Los códigos son `INVALID_INPUT`, `INVALID_NUMERIC_RESULT`, `RELATIONSHIP_ID_CONFLICT`, `RELATIONSHIP_NOT_FOUND`, `RELATIONSHIP_SELECTOR_NO_MATCH`, `SCHEDULED_EVENT_ID_CONFLICT`, `TRIGGER_IN_THE_PAST` e `INVALID_RESULT_STATE`. Los errores atribuibles a un efecto incluyen su índice y tipo; `INVALID_RESULT_STATE` corresponde a la validación final y no se atribuye a un efecto individual. Los errores internos inesperados se propagan sin convertirse. Todo error controlado implica rollback total y no devuelve resultados parciales.
 
 La evolución de `AppliedEffect` cambió de forma incompatible `DecisionRecord.immediateEffects` y elevó `GAME_VERSION` a `"0.3.0"`. No se implementó una migración porque no existen partidas persistidas de producción. Las versiones de los paquetes son independientes de `GAME_VERSION`.
+
+Posteriormente, el formato controlado de `HistoryKey` y el contrato persistido de contadores como safe integers no negativos elevaron `GAME_VERSION` a `"0.4.0"`. El hardening de objetos runtime que no pueden representarse fielmente como JSON mantuvo esa versión: `GAME_VERSION` versiona cambios incompatibles del formato JSON persistido, no cada endurecimiento de inputs no representables.
+
+## Fronteras persistibles
+
+`GameStateSchema`, `GameEventSchema`, `AppliedEffectSchema`, `DecisionRecordSchema`, `ScheduledEventSchema` y `JsonValueSchema` aplican una frontera persistible independiente antes de su validación estructural. Los schemas parciales menores quedan protegidos cuando forman parte de una de estas raíces y no adquieren individualmente esa frontera.
+
+Las fronteras rechazan `undefined`, ciclos, accessors propios, claves o valores `Symbol`, propiedades string no enumerables de objetos, sparse arrays y objetos con prototypes no soportados. Admiten plain objects, objetos con prototype nulo, arrays ordinarios densos y referencias compartidas no circulares. Los arrays no admiten holes, propiedades custom, claves `Symbol` ni índices accessor; un índice data-property no enumerable sí puede ser válido porque JSON serializa arrays por posición. Las class instances, `Date`, `Map`, `Set`, `RegExp`, typed arrays, boxed primitives y objetos con prototype custom no son persistibles.
+
+La prevalidación de objetos ordinarios rechaza accessors sin ejecutar su getter o setter; `safeParse` devuelve `success: false` en lugar de propagar el error del getter. La inspección de Proxies es best-effort: las excepciones reflexivas capturables se convierten en errores de validación, pero JavaScript no permite impedir efectos laterales de traps ni ofrece una sandbox.
+
+`assertNoExplicitUndefined` no implementa esta política completa. Su contrato público se limita a detectar `undefined` explícito y ciclos, conservar paths útiles, aceptar referencias compartidas no circulares y no mutar el input. Inspecciona data descriptors, incluso bajo keys `Symbol` o propiedades no enumerables, y omite accessors sin ejecutarlos.
+
+La serialización de `GameState` ejecuta primero la validación completa y sólo después produce JSON. Esto impide que `JSON.stringify` elimine silenciosamente contenido incompatible.
 
 ## Intensidades narrativas
 
@@ -1027,8 +1053,12 @@ No se implementará todavía:
 
 * selección del siguiente acontecimiento;
 * catálogo de acontecimientos;
+* validación integral del catálogo;
 * resolución de opciones;
-* probabilidades;
+* selección determinista de outcomes;
+* construcción de `ChoiceResolution` y `DecisionRecord` desde una elección;
+* scheduler runtime y consumo de eventos programados;
+* unicidad de IDs de relaciones y de `ScheduledEvent` dentro de `GameState`;
 * clubes reales;
 * equipos amateurs;
 * contratos;

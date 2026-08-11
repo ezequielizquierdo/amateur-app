@@ -59,7 +59,7 @@ const state = createInitialGameState({
 ```
 
 Si no se proporciona `initialRelationships`, la partida comienza con un array
-vacío. El motor utiliza internamente `GAME_VERSION`, actualmente `"0.4.0"`.
+vacío. El motor utiliza internamente `GAME_VERSION`, actualmente `"0.5.0"`.
 
 Las versiones `0.1.0` de los `package.json` corresponden a las versiones internas
 de los paquetes y no tienen que coincidir con `GAME_VERSION`.
@@ -105,6 +105,14 @@ contrato focalizado en `undefined` explícito, ciclos, paths útiles y referenci
 compartidas válidas. Inspecciona data descriptors y omite accessors sin
 ejecutarlos.
 
+Dentro de un `GameState`, cada `Relationship.id` debe ser único en
+`relationships` y cada `ScheduledEvent.id` debe ser único en `scheduledEvents`.
+La comparación es exacta y case-sensitive, sin trim ni normalización. Son
+namespaces independientes: una relación y un evento programado pueden compartir
+el mismo string. `Relationship.characterId` sí puede repetirse cuando los IDs de
+las relaciones son diferentes. La validación rechaza duplicados; no los elimina,
+fusiona, renombra ni repara.
+
 Las claves dinámicas de flags y contadores usan internamente el contrato
 `HistoryKey`: segmentos alfanuméricos en minúsculas separados por un único guion
 bajo, sin trim, coerción ni normalización. Los nombres `__proto__`, `prototype` y
@@ -134,7 +142,8 @@ Está implementado:
 - registros `AppliedEffect`, programación persistida y errores tipados del resolvedor;
 - claves dinámicas `HistoryKey` y contadores persistidos como safe integers no negativos;
 - hardening de las seis fronteras persistibles;
-- `GAME_VERSION = "0.4.0"`.
+- unicidad de `Relationship.id` y `ScheduledEvent.id` dentro de sus respectivas colecciones de `GameState`;
+- `GAME_VERSION = "0.5.0"`.
 
 Todavía no está implementado:
 
@@ -146,7 +155,6 @@ Todavía no está implementado:
 - selector del siguiente acontecimiento;
 - catálogo real de acontecimientos;
 - validación integral del catálogo;
-- unicidad de IDs de relaciones y de `ScheduledEvent` dentro de `GameState`;
 - selección y consumo runtime de eventos programados;
 - API o servidor HTTP;
 - frontend;
@@ -164,8 +172,10 @@ recalcula `footballLevel` una sola vez al finalizar. Esta capacidad no equivale 
 la resolución completa de acontecimientos.
 La evolución de `AppliedEffect` elevó históricamente `GAME_VERSION` a `"0.3.0"`.
 El contrato posterior de `HistoryKey` y safe counters lo elevó a la versión
-actual `"0.4.0"`. El hardening de objetos runtime no representables fielmente en
-JSON no cambió el formato persistido y mantuvo esa versión. `GAME_VERSION`
-versiona cambios incompatibles del formato JSON, no cada endurecimiento de la
-validación. No se implementaron migraciones porque no existen partidas
-persistidas de producción.
+`"0.4.0"`. El hardening de objetos runtime no representables fielmente en JSON
+no cambió el formato persistido y mantuvo esa versión. Las invariantes de
+identidad de las colecciones de `GameState` elevaron la versión actual a
+`"0.5.0"`, porque documentos JSON antes aceptados con IDs duplicados pasaron a
+ser inválidos. `GAME_VERSION` versiona cambios incompatibles del formato JSON,
+no cada endurecimiento de la validación. No se implementaron migraciones ni un
+gate automático que exija que todo estado tenga la versión actual.

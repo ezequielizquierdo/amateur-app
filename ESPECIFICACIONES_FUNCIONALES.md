@@ -555,6 +555,8 @@ Los campos `affection`, `trust` y `conflict` estarán entre `0` y `100`.
 * Una expareja puede quedar registrada con `isActive: false`.
 * Un familiar fallecido permanece en la historia con `isAlive: false`.
 * Los tags permiten identificar relaciones narrativas particulares.
+* Dentro de un `GameState`, cada `Relationship.id` debe ser único en `relationships`. La comparación es exacta y case-sensitive, sin trim, lowercase ni normalización.
+* `Relationship.characterId` no tiene unicidad de colección. Dos relaciones pueden apuntar al mismo personaje si sus `Relationship.id` son diferentes; por ejemplo, `alex_friend` y `alex_teammate` pueden compartir `characterId: "alex"`.
 
 Ejemplos de tags:
 
@@ -726,6 +728,8 @@ Estas reglas están implementadas por el evaluador runtime de condiciones. La se
 
 `FollowUpDefinition` describe una consecuencia relativa al momento de una futura resolución. `ScheduledEvent` representa esa consecuencia después de programarse y utiliza valores absolutos. Las variantes `turn`, `age` y `season` requieren `triggerValue` y no admiten `conditions`; la variante `condition` requiere `EventConditionGroup` y no admite `triggerValue`.
 
+Dentro de un `GameState`, cada `ScheduledEvent.id` debe ser único en `scheduledEvents`, también mediante comparación exacta y sin normalización. La unicidad se evalúa separadamente para `relationships[].id` y `scheduledEvents[].id`: una relación y un evento programado pueden compartir el mismo string sin conflicto.
+
 Las consecuencias programadas permitirán que una decisión tenga efectos posteriores.
 
 Ejemplos:
@@ -771,7 +775,7 @@ type GameState = {
 ## Reglas técnicas
 
 * `runId` identifica la partida.
-* `gameVersion` permite identificar la versión del formato de la partida. En esta etapa el motor utiliza la constante `GAME_VERSION = "0.4.0"` y no recibe la versión desde el llamador.
+* `gameVersion` permite identificar la versión del formato de la partida. En esta etapa el motor utiliza la constante `GAME_VERSION = "0.5.0"` y no recibe la versión desde el llamador.
 * `seed` permitirá reproducir resultados.
 * `currentSeason` comienza en `1`.
 * `currentTurn` comienza en `0`.
@@ -863,11 +867,11 @@ Cada efecto produce al menos un registro auditable con estado `applied`, `no_cha
 
 Los selectores de `RelationshipValueEffect` combinan sus criterios con AND, exigen todos los `requiredTags` y modifican todas las relaciones coincidentes sin alterar su orden, con un registro por relación. No encontrar coincidencias es un error. No se filtran implícitamente relaciones inactivas o fallecidas.
 
-Al crear una relación se completan `startedAtAge` con la edad actual, `isActive: true` e `isAlive: true`, se valida la relación completa y se agrega al final. El resolvedor no genera IDs. Un ID duplicado produce error o un registro `ignored` según `conflictPolicy`; incluso una relación idéntica es un conflicto. Un `characterId` puede repetirse con otro ID. Desactivar sólo establece `isActive: false`; una relación ya inactiva produce `no_change` y un ID inexistente produce error.
+Al crear una relación se completan `startedAtAge` con la edad actual, `isActive: true` e `isAlive: true`, se valida la relación completa y se agrega al final. El resolvedor no genera IDs. Un ID duplicado produce `RELATIONSHIP_ID_CONFLICT` o un registro `ignored` según `conflictPolicy`; incluso una relación idéntica es un conflicto. Esta defensa específica evita construir un estado inválido y no reemplaza la invariante del `GameState`. Un `characterId` puede repetirse con otro ID. Desactivar sólo establece `isActive: false`; una relación ya inactiva produce `no_change` y un ID inexistente produce error. En un estado válido, un selector por `relationshipId` coincide como máximo con una relación, mientras que los selectores por tipo o tags pueden continuar modificando varias.
 
 Los follow-ups de turno se convierten a `currentTurn + afterTurns`; edad y temporada son valores absolutos; y una condición conserva su `EventConditionGroup`. Edad o temporada pasadas producen error. Un valor igual al actual es válido y queda elegible en la próxima evaluación del scheduler. No se consume recursivamente un evento programado durante la misma resolución.
 
-El ID programado es determinista e incluye, con codificación de longitud no ambigua, `runId`, `currentTurn`, `sourceEventId`, `sourceEventVersion`, `choiceId`, la fase `choice` u `outcome`, `outcomeId` cuando corresponde y `sourceEffectIndex`. No utiliza UUID, `Math.random`, `Date` ni hashing externo. Una colisión produce error y rollback. El evento se agrega a `nextState.scheduledEvents`, pero no se ejecuta ni consume recursivamente durante la resolución.
+El ID programado es determinista e incluye, con codificación de longitud no ambigua, `runId`, `currentTurn`, `sourceEventId`, `sourceEventVersion`, `choiceId`, la fase `choice` u `outcome`, `outcomeId` cuando corresponde y `sourceEffectIndex`. No utiliza UUID, `Math.random`, `Date` ni hashing externo. Una colisión produce `SCHEDULED_EVENT_ID_CONFLICT` y rollback. Esta defensa evita construir un estado inválido y se conserva además de la validación final del `GameState`. El evento se agrega a `nextState.scheduledEvents`, pero no se ejecuta ni consume recursivamente durante la resolución.
 
 La API pública es una única función `resolveGameEffects(effects, state, context)` que devuelve `nextState` y `appliedEffects`. Acepta un lote vacío y devuelve una copia equivalente sin registros, con `footballLevel` derivado desde los atributos finales. El resolvedor individual es interno; no se devuelven `previousState` ni `scheduledEventIds`, y todavía no se crea `ChoiceResolution` ni `DecisionRecord`.
 
@@ -891,6 +895,8 @@ La evolución de `AppliedEffect` cambió de forma incompatible `DecisionRecord.i
 
 Posteriormente, el formato controlado de `HistoryKey` y el contrato persistido de contadores como safe integers no negativos elevaron `GAME_VERSION` a `"0.4.0"`. El hardening de objetos runtime que no pueden representarse fielmente como JSON mantuvo esa versión: `GAME_VERSION` versiona cambios incompatibles del formato JSON persistido, no cada endurecimiento de inputs no representables.
 
+Las invariantes de identidad de las colecciones de `GameState` elevaron posteriormente `GAME_VERSION` a `"0.5.0"`. El cambio es incompatible porque un JSON con `Relationship.id` duplicados o `ScheduledEvent.id` duplicados podía aceptarse antes y ahora es inválido. No existe migración automática ni un gate que exija `gameVersion === GAME_VERSION`; un estado anterior sin duplicados puede continuar cumpliendo la estructura, sin que esto prometa compatibilidad general entre versiones.
+
 ## Fronteras persistibles
 
 `GameStateSchema`, `GameEventSchema`, `AppliedEffectSchema`, `DecisionRecordSchema`, `ScheduledEventSchema` y `JsonValueSchema` aplican una frontera persistible independiente antes de su validación estructural. Los schemas parciales menores quedan protegidos cuando forman parte de una de estas raíces y no adquieren individualmente esa frontera.
@@ -902,6 +908,8 @@ La prevalidación de objetos ordinarios rechaza accessors sin ejecutar su getter
 `assertNoExplicitUndefined` no implementa esta política completa. Su contrato público se limita a detectar `undefined` explícito y ciclos, conservar paths útiles, aceptar referencias compartidas no circulares y no mutar el input. Inspecciona data descriptors, incluso bajo keys `Symbol` o propiedades no enumerables, y omite accessors sin ejecutarlos.
 
 La serialización de `GameState` ejecuta primero la validación completa y sólo después produce JSON. Esto impide que `JSON.stringify` elimine silenciosamente contenido incompatible.
+
+`GameStateSchema` comprueba la unicidad de `relationships[].id` y `scheduledEvents[].id` sobre el estado completo; los schemas de un elemento aislado no pueden comprobar su colección. Cada duplicado posterior produce una issue sobre `relationships[index].id` o `scheduledEvents[index].id`. `validateGameState`, y por extensión `serializeGameState` y `deserializeGameState`, rechazan esos estados. No se eliminan, fusionan, renombran ni reparan IDs duplicados. `resolveGameEffects` hereda esta validación y rechaza un estado inicial ambiguo con `INVALID_INPUT` antes de aplicar efectos.
 
 ## Intensidades narrativas
 
@@ -1044,6 +1052,8 @@ El sistema debe garantizar:
 14. Los rasgos seleccionados deben pertenecer a sus respectivos grupos.
 15. `currentSeason` debe ser mayor o igual que `1`.
 16. `currentTurn` debe ser mayor o igual que `0`.
+17. Cada `Relationship.id` debe ser único dentro de `relationships`.
+18. Cada `ScheduledEvent.id` debe ser único dentro de `scheduledEvents`.
 
 ---
 
@@ -1058,7 +1068,6 @@ No se implementará todavía:
 * selección determinista de outcomes;
 * construcción de `ChoiceResolution` y `DecisionRecord` desde una elección;
 * scheduler runtime y consumo de eventos programados;
-* unicidad de IDs de relaciones y de `ScheduledEvent` dentro de `GameState`;
 * clubes reales;
 * equipos amateurs;
 * contratos;

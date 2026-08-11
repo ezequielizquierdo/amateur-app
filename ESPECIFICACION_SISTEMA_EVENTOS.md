@@ -867,7 +867,7 @@ Son ejemplos de no_change: set con el mismo valor, add 0, multiply 1, clear de u
 
 11.16. Resolución de relaciones
 
-En RelationshipValueEffect, todos los criterios del selector se combinan con AND y requiredTags exige todos los tags declarados. Se modifican todas las relaciones coincidentes, se conserva el orden original y se genera un AppliedEffect por relación. La ausencia de coincidencias produce error y rollback. Las relaciones inactivas o fallecidas pueden modificarse: no existen filtros implícitos.
+En RelationshipValueEffect, todos los criterios del selector se combinan con AND y requiredTags exige todos los tags declarados. Se modifican todas las relaciones coincidentes, se conserva el orden original y se genera un AppliedEffect por relación. La ausencia de coincidencias produce error y rollback. Las relaciones inactivas o fallecidas pueden modificarse: no existen filtros implícitos. En un `GameState` válido, un selector por `relationshipId` coincide como máximo con una relación; los selectores por tipo o `requiredTags` conservan su cardinalidad potencial 1→N.
 
 CreateRelationshipEffect completa la definición con:
 
@@ -875,7 +875,9 @@ startedAtAge: edad actual;
 isActive: true;
 isAlive: true.
 
-La relación completa se valida y se agrega al final del array. El resolvedor no genera IDs. Un relationshipId duplicado con conflictPolicy error produce rollback. Con conflictPolicy ignore, la resolución continúa sin cambio y registra ignored. Una relación idéntica continúa siendo un conflicto. El modelo actual permite repetir characterId cuando el relationshipId es diferente.
+La relación completa se valida y se agrega al final del array. El resolvedor no genera IDs. Un relationshipId duplicado con conflictPolicy error produce `RELATIONSHIP_ID_CONFLICT` y rollback. Con conflictPolicy ignore, la resolución continúa sin cambio y registra ignored. Una relación idéntica continúa siendo un conflicto. Esta defensa específica evita construir un estado inválido y no reemplaza la invariante final de `GameState`. El modelo permite repetir `characterId` cuando el `Relationship.id` es diferente.
+
+Dentro de un `GameState`, `relationships[].id` es único mediante comparación exacta y case-sensitive, sin trim, lowercase ni normalización. La primera aparición es válida y cualquier aparición posterior invalida el estado. `Relationship.characterId` no tiene esa restricción: `alex_friend` y `alex_teammate` pueden ser relaciones distintas con `characterId: "alex"`.
 
 DeactivateRelationshipEffect sólo establece isActive en false. No elimina la relación y conserva isAlive, valores y tags. Una relación ya inactiva produce no_change. Un relationshipId inexistente produce error y rollback.
 
@@ -890,7 +892,7 @@ condition: conserva EventConditionGroup.
 
 afterTurns siempre programa en el futuro. Un atAge menor que la edad actual o un atSeason menor que currentSeason produce TRIGGER_IN_THE_PAST y rollback. Un valor igual a la edad o temporada actual es válido y queda elegible en la próxima evaluación del scheduler. Un acontecimiento programado no se consume recursivamente dentro de la misma resolución.
 
-El ID del ScheduledEvent es determinista e incluye runId, currentTurn, sourceEventId, sourceEventVersion, choiceId, la phase choice u outcome, outcomeId cuando corresponde y sourceEffectIndex. Los componentes variables se codifican con su longitud para evitar composiciones ambiguas. No se utilizan UUID, Math.random, Date ni hashing externo. Un ID duplicado produce error y rollback. El resultado se agrega a `nextState.scheduledEvents`, pero no existe un scheduler runtime ni consumo recursivo durante la misma resolución.
+El ID del ScheduledEvent es determinista e incluye runId, currentTurn, sourceEventId, sourceEventVersion, choiceId, la phase choice u outcome, outcomeId cuando corresponde y sourceEffectIndex. Los componentes variables se codifican con su longitud para evitar composiciones ambiguas. No se utilizan UUID, Math.random, Date ni hashing externo. Un ID duplicado produce `SCHEDULED_EVENT_ID_CONFLICT` y rollback. Esta defensa específica se conserva además de la validación final del `GameState`. El resultado se agrega a `nextState.scheduledEvents`, pero no existe un scheduler runtime ni consumo recursivo durante la misma resolución.
 
 11.18. Contexto y API pública
 
@@ -939,7 +941,7 @@ SCHEDULED_EVENT_ID_CONFLICT;
 TRIGGER_IN_THE_PAST;
 INVALID_RESULT_STATE.
 
-La API lanza este error para fallos controlados y el rollback es total. Los errores atribuibles a un efecto incluyen effectIndex y effectType. INVALID_RESULT_STATE corresponde a la validación final y no se atribuye a un efecto particular. Los errores internos inesperados se propagan sin convertirse.
+La API lanza este error para fallos controlados y el rollback es total. Los errores atribuibles a un efecto incluyen effectIndex y effectType. INVALID_RESULT_STATE corresponde a la validación final y no se atribuye a un efecto particular. Un estado inicial con `Relationship.id` o `ScheduledEvent.id` duplicados se rechaza como `INVALID_INPUT` antes de aplicar efectos; `resolveGameEffects` hereda esta regla de la validación de `GameState`. Los errores internos inesperados se propagan sin convertirse.
 
 12. Resultados probabilísticos
 type ProbabilisticOutcome = {
@@ -1131,6 +1133,8 @@ type ScheduledEvent = ScheduledEventCommon & (
 
 Las variantes turn, age y season requieren triggerValue y no admiten conditions.
 La variante condition requiere EventConditionGroup y no admite triggerValue.
+
+Dentro de un `GameState`, cada `ScheduledEvent.id` debe ser único en `scheduledEvents`. La comparación es exacta y no normaliza el ID. Esta colección y `relationships` son namespaces independientes, por lo que una relación y un evento programado pueden compartir el mismo string. La primera aparición es válida y cada duplicado posterior invalida el estado; no existe first wins, last wins ni reparación silenciosa.
 
 Ejemplo:
 
@@ -1371,7 +1375,7 @@ Los únicos exports públicos de este contrato en shared-types son AppliedEffect
 
 Este cambio fue incompatible y modificó indirectamente DecisionRecord.immediateEffects. Su implementación elevó GAME_VERSION a "0.3.0". No se implementó una migración porque no existen partidas persistidas de producción. Las versiones internas de los package.json no tienen que coincidir con GAME_VERSION.
 
-El contrato posterior de `HistoryKey` y contadores persistidos como safe integers no negativos elevó la versión actual a `GAME_VERSION = "0.4.0"`. El hardening de objetos runtime no representables fielmente en JSON mantuvo esa versión. `GAME_VERSION` versiona cambios incompatibles del formato JSON persistido, no cada endurecimiento de inputs runtime.
+El contrato posterior de `HistoryKey` y contadores persistidos como safe integers no negativos elevó la versión a `GAME_VERSION = "0.4.0"`. El hardening de objetos runtime no representables fielmente en JSON mantuvo esa versión. Las invariantes de identidad de las colecciones de `GameState` elevaron después la versión actual a `GAME_VERSION = "0.5.0"`: documentos JSON con IDs duplicados que antes podían aceptarse ahora son inválidos. `GAME_VERSION` versiona cambios incompatibles del formato JSON persistido, no cada endurecimiento de inputs runtime. No existe migración automática ni un gate que exija `gameVersion === GAME_VERSION`; un estado anterior sin duplicados puede continuar cumpliendo la estructura, sin prometer compatibilidad general entre versiones.
 
 22. Almacenamiento del contenido
 
@@ -1425,6 +1429,8 @@ Las class instances, `Date`, `Map`, `Set`, `RegExp`, typed arrays, boxed primiti
 `assertNoExplicitUndefined` no es el validador completo de persistibilidad. Se limita a detectar `undefined` explícito y ciclos, conservar paths útiles y aceptar referencias compartidas no circulares. Inspecciona data descriptors sin ejecutar accessors y omite estos últimos; la política completa corresponde a las seis fronteras persistibles.
 
 Para `GameState`, el orden es validación completa y luego `JSON.stringify`, nunca serialización previa a la validación.
+
+`GameStateSchema` valida sobre el estado completo que `relationships[].id` y `scheduledEvents[].id` sean únicos dentro de sus respectivas colecciones. `RelationshipSchema` y `ScheduledEventSchema` aislados no aplican esta regla porque un elemento no conoce el resto de su colección. Los duplicados posteriores producen issues sobre paths equivalentes a `relationships[index].id` y `scheduledEvents[index].id`. `serializeGameState` rechaza el estado antes de producir JSON y `deserializeGameState` lo rechaza después de `JSON.parse` mediante `validateGameState`. No se eliminan, fusionan, renombran ni reparan duplicados, porque hacerlo podría cambiar el significado narrativo.
 
 Antes de publicar contenido, el catálogo debe comprobar:
 
@@ -1630,7 +1636,7 @@ base de datos.
 
 La evolución persistible de AppliedEffect, el evaluador de condiciones y la aplicación runtime de lotes de efectos mediante `resolveGameEffects` se implementaron en micro-commits posteriores. Continúan fuera del alcance actual `ChoiceResolution`, la construcción de `DecisionRecord`, la resolución completa de opciones y outcomes, la selección probabilística, el scheduler, el selector del siguiente acontecimiento, el catálogo real, la interfaz, la API y la base de datos.
 
-También continúan pendientes la unicidad de IDs de relaciones y de `ScheduledEvent` dentro de `GameState`, la validación integral del catálogo, las repeat/cooldown policies runtime y el consumo de eventos programados.
+También continúan pendientes la validación integral del catálogo, las repeat/cooldown policies runtime y el consumo de eventos programados.
 
 El primer commit técnico se limitó a los esquemas, tipos y evoluciones estructurales persistibles enumeradas. La evaluación de condiciones y la aplicación de efectos se incorporaron después como micro-commits separados; la selección runtime y el catálogo continúan pendientes.
 

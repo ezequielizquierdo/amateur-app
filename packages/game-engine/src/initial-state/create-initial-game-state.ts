@@ -13,7 +13,7 @@ import { validateGameState } from "../validation/validate-game-state.js";
 import { applyInitialTraits } from "./apply-initial-traits.js";
 import { BASE_FOOTBALL_ATTRIBUTES, BASE_STATS } from "./base-values.js";
 
-export const GAME_VERSION = "0.4.0" as const;
+export const GAME_VERSION = "0.5.0" as const;
 
 export type CreateInitialGameStateInput = {
   runId: string;

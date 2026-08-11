@@ -95,6 +95,45 @@ function validState(): unknown {
   };
 }
 
+function relationship(id: string, characterId = `character-${id}`) {
+  return {
+    id,
+    characterId,
+    type: "friend" as const,
+    displayName: `Friend ${id}`,
+    affection: 50,
+    trust: 50,
+    conflict: 0,
+    isActive: true,
+    isAlive: true,
+    startedAtAge: 14,
+    tags: [],
+  };
+}
+
+function scheduledEvent(id: string) {
+  return {
+    id,
+    eventId: `event_${id}`,
+    sourceEventId: "source_event",
+    priority: 0,
+    createdAtTurn: 0,
+    consumed: false,
+    triggerType: "turn" as const,
+    triggerValue: 1,
+  };
+}
+
+function stateCollections(state: unknown): {
+  relationships: ReturnType<typeof relationship>[];
+  scheduledEvents: ReturnType<typeof scheduledEvent>[];
+} {
+  return state as {
+    relationships: ReturnType<typeof relationship>[];
+    scheduledEvents: ReturnType<typeof scheduledEvent>[];
+  };
+}
+
 describe("shared structural schemas", () => {
   it.each([0, 100])("accepts the exact scale boundary %s", (value) => {
     expect(ScaleSchema.parse(value)).toBe(value);
@@ -110,6 +149,100 @@ describe("shared structural schemas", () => {
 
   it("accepts a structurally valid game state", () => {
     expect(GameStateSchema.safeParse(validState()).success).toBe(true);
+  });
+
+  it.each([
+    ["empty", []],
+    ["one", [relationship("one")]],
+    ["multiple unique", [relationship("one"), relationship("two")]],
+  ])("accepts %s relationship IDs", (_case, relationships) => {
+    const state = validState();
+    stateCollections(state).relationships = relationships;
+    expect(GameStateSchema.safeParse(state).success).toBe(true);
+  });
+
+  it("accepts distinct relationship IDs sharing a characterId", () => {
+    const state = validState();
+    stateCollections(state).relationships = [
+      relationship("alex_friendship", "alex"),
+      relationship("alex_teammate", "alex"),
+    ];
+    expect(GameStateSchema.safeParse(state).success).toBe(true);
+  });
+
+  it.each([
+    ["twice", ["a", "a"], [["relationships", 1, "id"]]],
+    [
+      "three times",
+      ["a", "a", "a"],
+      [
+        ["relationships", 1, "id"],
+        ["relationships", 2, "id"],
+      ],
+    ],
+    [
+      "multiple groups",
+      ["a", "b", "a", "a", "b"],
+      [
+        ["relationships", 2, "id"],
+        ["relationships", 3, "id"],
+        ["relationships", 4, "id"],
+      ],
+    ],
+  ])("rejects relationship IDs duplicated %s", (_case, ids, paths) => {
+    const state = validState();
+    stateCollections(state).relationships = ids.map((id) => relationship(id));
+    const result = GameStateSchema.safeParse(state);
+    expect(result.success).toBe(false);
+    if (result.success) throw new Error("Expected duplicate IDs to fail");
+    expect(result.error.issues.map((issue) => issue.path)).toEqual(paths);
+  });
+
+  it.each([
+    ["empty", []],
+    ["one", [scheduledEvent("one")]],
+    ["multiple unique", [scheduledEvent("one"), scheduledEvent("two")]],
+  ])("accepts %s scheduled event IDs", (_case, scheduledEvents) => {
+    const state = validState();
+    stateCollections(state).scheduledEvents = scheduledEvents;
+    expect(GameStateSchema.safeParse(state).success).toBe(true);
+  });
+
+  it.each([
+    ["twice", ["a", "a"], [["scheduledEvents", 1, "id"]]],
+    [
+      "three times",
+      ["a", "a", "a"],
+      [
+        ["scheduledEvents", 1, "id"],
+        ["scheduledEvents", 2, "id"],
+      ],
+    ],
+    [
+      "multiple groups",
+      ["a", "b", "a", "a", "b"],
+      [
+        ["scheduledEvents", 2, "id"],
+        ["scheduledEvents", 3, "id"],
+        ["scheduledEvents", 4, "id"],
+      ],
+    ],
+  ])("rejects scheduled event IDs duplicated %s", (_case, ids, paths) => {
+    const state = validState();
+    stateCollections(state).scheduledEvents = ids.map((id) =>
+      scheduledEvent(id),
+    );
+    const result = GameStateSchema.safeParse(state);
+    expect(result.success).toBe(false);
+    if (result.success) throw new Error("Expected duplicate IDs to fail");
+    expect(result.error.issues.map((issue) => issue.path)).toEqual(paths);
+  });
+
+  it("keeps relationship and scheduled event ID namespaces separate", () => {
+    const state = validState();
+    stateCollections(state).relationships = [relationship("same_id")];
+    stateCollections(state).scheduledEvents = [scheduledEvent("same_id")];
+    expect(GameStateSchema.safeParse(state).success).toBe(true);
   });
 
   it("rejects GameState accessors without executing them", () => {

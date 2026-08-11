@@ -169,6 +169,35 @@ describe("input validation", () => {
     expect(state).toEqual(before);
   });
 
+  it.each(["relationship", "scheduled event"] as const)(
+    "rejects duplicate %s IDs in the initial state",
+    (collection) => {
+      const state = createState();
+      if (collection === "relationship") {
+        state.relationships = [
+          createRelationship({ id: "duplicate" }),
+          createRelationship({ id: "duplicate", characterId: "other" }),
+        ];
+      } else {
+        const event = {
+          id: "duplicate",
+          eventId: "future_event",
+          sourceEventId: "source_event",
+          priority: 0,
+          createdAtTurn: 0,
+          consumed: false,
+          triggerType: "turn" as const,
+          triggerValue: 1,
+        };
+        state.scheduledEvents = [event, { ...event, eventId: "other_event" }];
+      }
+      const before = structuredClone(state);
+      const error = captureError(() => resolve([], state));
+      expectResolutionError(error, "INVALID_INPUT");
+      expect(state).toEqual(before);
+    },
+  );
+
   it.each([
     [
       0,

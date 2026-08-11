@@ -10,13 +10,56 @@ import {
   serializeGameState,
   validateGameState,
 } from "../src/index.js";
-import { createInput } from "./test-fixtures.js";
+import { createInput, createRelationship } from "./test-fixtures.js";
+
+function duplicateScheduledEvent() {
+  return {
+    id: "duplicate",
+    eventId: "future_event",
+    sourceEventId: "source_event",
+    priority: 0,
+    createdAtTurn: 0,
+    consumed: false,
+    triggerType: "turn" as const,
+    triggerValue: 1,
+  };
+}
 
 describe("game-state serialization", () => {
   it("round-trips a valid game state", () => {
     const state = createInitialGameState(createInput());
     expect(deserializeGameState(serializeGameState(state))).toEqual(state);
   });
+
+  it.each(["serialize", "deserialize"] as const)(
+    "%s rejects duplicate relationship IDs",
+    (boundary) => {
+      const state = createInitialGameState(createInput());
+      state.relationships = [
+        createRelationship({ id: "duplicate" }),
+        createRelationship({ id: "duplicate", characterId: "other" }),
+      ];
+      const action =
+        boundary === "serialize"
+          ? () => serializeGameState(state)
+          : () => deserializeGameState(JSON.stringify(state));
+      expect(action).toThrow(/relationships\.1\.id/);
+    },
+  );
+
+  it.each(["serialize", "deserialize"] as const)(
+    "%s rejects duplicate scheduled event IDs",
+    (boundary) => {
+      const state = createInitialGameState(createInput());
+      const event = duplicateScheduledEvent();
+      state.scheduledEvents = [event, { ...event, eventId: "other_event" }];
+      const action =
+        boundary === "serialize"
+          ? () => serializeGameState(state)
+          : () => deserializeGameState(JSON.stringify(state));
+      expect(action).toThrow(/scheduledEvents\.1\.id/);
+    },
+  );
 
   it("round-trips valid dynamic history values exactly", () => {
     const state = createInitialGameState(createInput());

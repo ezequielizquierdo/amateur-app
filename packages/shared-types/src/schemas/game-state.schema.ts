@@ -16,6 +16,27 @@ import { persistibleSchema } from "../validation/persistible-schema.js";
 
 export const GameRunStatusSchema = z.enum(["active", "finished"]);
 
+function addDuplicateIdIssues(
+  items: readonly { id: string }[],
+  collection: "relationships" | "scheduledEvents",
+  label: "relationship" | "scheduled event",
+  context: z.RefinementCtx,
+): void {
+  const seenIds = new Set<string>();
+
+  for (const [index, item] of items.entries()) {
+    if (seenIds.has(item.id)) {
+      context.addIssue({
+        code: "custom",
+        message: `Duplicate ${label} id "${item.id}"`,
+        path: [collection, index, "id"],
+      });
+    } else {
+      seenIds.add(item.id);
+    }
+  }
+}
+
 const GameStateStructuralSchema = z
   .object({
     runId: NonEmptyStringSchema,
@@ -37,6 +58,18 @@ const GameStateStructuralSchema = z
   })
   .strict()
   .superRefine((state, context) => {
+    addDuplicateIdIssues(
+      state.relationships,
+      "relationships",
+      "relationship",
+      context,
+    );
+    addDuplicateIdIssues(
+      state.scheduledEvents,
+      "scheduledEvents",
+      "scheduled event",
+      context,
+    );
     if (state.life.age < state.profile.startingAge) {
       context.addIssue({
         code: "custom",

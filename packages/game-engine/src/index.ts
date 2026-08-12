@@ -10,6 +10,14 @@ export {
   type EventEffectResolutionErrorCode,
 } from "./events/event-effect-resolution-error.js";
 export {
+  OutcomeSelectionError,
+  type OutcomeSelectionErrorCode,
+} from "./events/outcomes/outcome-selection-error.js";
+export {
+  selectDeterministicOutcome,
+  type OutcomeSelectionContext,
+} from "./events/outcomes/select-deterministic-outcome.js";
+export {
   resolveGameEffects,
   type EffectResolutionContext,
 } from "./events/resolve-game-effects.js";

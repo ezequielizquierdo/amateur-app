@@ -385,6 +385,10 @@ type AllowedStateConditionField =
 
 No se permitirá consultar cualquier propiedad mediante un string libre.
 
+El contrato TypeScript implementado conserva esta lista como una unión literal exacta de 44 campos. `StateCondition` mantiene correlacionados `field`, `operator` y `value`: los 26 campos numéricos usan números y operadores numéricos compatibles; los ocho campos de string libre usan `NonEmptyString`; cada uno de los nueve campos enum conserva su propio tipo enum; y `football.isInjured` admite `boolean` o `boolean[]`. Las variantes `exists` y `notExists` aceptan cualquiera de los 44 campos y no contienen `value`. Esta precisión recupera además la exhaustividad estática del mapa interno de selectores.
+
+El saneamiento fue exclusivamente de inferencia TypeScript. No modificó la validación runtime, el evaluador ni el conjunto de documentos JSON aceptados o rechazados, por lo que `GAME_VERSION` continúa en `"0.5.0"`.
+
 9.3. Condiciones sobre flags
 type FlagCondition = {
   type: "flag";

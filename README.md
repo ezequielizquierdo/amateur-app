@@ -132,6 +132,7 @@ Está implementado:
 - follow-ups;
 - políticas de selección y repetición;
 - evaluación pura y determinista de condiciones;
+- `AllowedStateConditionField` como unión TypeScript exacta de los 44 campos permitidos y `StateCondition` con correlación estática entre campo, operador y valor;
 - `AppliedEffect` como unión persistible estricta de las diez familias de efectos;
 - origen e índice de cada efecto aplicado, payload solicitado y snapshots tipados;
 - `DecisionRecord` con versión del acontecimiento, outcome opcional e `immediateEffects` evolucionado;

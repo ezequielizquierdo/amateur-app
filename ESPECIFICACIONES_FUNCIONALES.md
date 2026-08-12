@@ -716,6 +716,8 @@ type ScheduledEvent = ScheduledEventCommon & (
 
 `EventCondition` es una unión controlada. Las rutas consultables están enumeradas explícitamente y no se admiten paths arbitrarios. Los operadores y sus valores dependen del tipo del campo. Los grupos utilizan `all` o `any`, deben contener al menos una condición y no pueden anidarse en esta versión. El contrato detallado se encuentra en la especificación funcional del sistema de acontecimientos.
 
+En TypeScript, `AllowedStateConditionField` es la unión literal exacta de los 44 campos consultables y `StateCondition` conserva la correlación entre `field`, `operator` y `value`. Los campos numéricos sólo admiten operadores y valores numéricos compatibles; los nueve campos enum conservan individualmente su respectivo tipo; los ocho campos de string libre utilizan strings no vacíos; y `football.isInjured` utiliza `boolean` o `boolean[]`. `exists` y `notExists` admiten cualquiera de los 44 campos y no contienen `value`. Este saneamiento estático también restablece la comprobación exhaustiva del mapa interno de selectores, sin cambiar el evaluador runtime ni el conjunto JSON aceptado o rechazado. Por ello `GAME_VERSION` permanece en `"0.5.0"`.
+
 Para las condiciones sobre flags, `exists` y `notExists` consultan si la clave es una propiedad propia de `history.flags`. `equals` y `notEquals` requieren que la clave exista; por lo tanto, una flag ausente produce false para ambas comparaciones de valor. Los valores false, 0 y string vacío se consideran presentes. No se utiliza truthiness, coerción, trim ni normalización.
 
 Los contadores ausentes se interpretan como 0. Esta regla es específica de los contadores y no debe confundirse con la semántica de existencia de las flags.

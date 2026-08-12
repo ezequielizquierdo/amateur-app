@@ -553,7 +553,7 @@ Cada DecisionRecord coincidente cuenta como una resolución y varias resolucione
 
 `history.completedEventIds` no será consultado por EventHistoryCondition. El campo permanece en el modelo actual, pero su posible derivación, sincronización o eliminación futura está fuera del alcance de este micro-commit. No debe combinarse con `history.decisions`, porque una divergencia entre ambas colecciones podría producir resultados contradictorios.
 
-Estas reglas están implementadas por el evaluador runtime de condiciones. También está implementada la aplicación atómica de lotes de `GameEffect` mediante `resolveGameEffects`. Todavía no se implementan la selección de eventos, la resolución completa de opciones y outcomes, el scheduler ni el azar.
+Estas reglas están implementadas por el evaluador runtime de condiciones. También están implementadas la aplicación atómica de lotes de `GameEffect` mediante `resolveGameEffects` y la selección determinista de outcomes. Todavía no se implementan la selección del siguiente evento, la resolución completa de opciones y outcomes ni el scheduler.
 10. Opciones
 type EventChoice = {
   id: ChoiceId;
@@ -958,16 +958,47 @@ type ProbabilisticOutcome = {
   followUps?: FollowUpDefinition[];
 };
 Reglas
-weight debe ser un entero positivo.
+weight debe ser un safe integer positivo.
 Un resultado debe contener al menos un efecto o al menos un follow-up.
 effects y followUps no pueden estar ambos ausentes o vacíos.
 Los pesos no necesitan sumar 100.
-Primero se filtran los resultados compatibles.
-Después se normalizan sus pesos.
-Se elige exactamente uno.
-La selección será determinista.
-Si no queda ningún resultado compatible, la resolución debe fallar sin modificar el estado.
+Los pesos son proporciones relativas: 1 / 1 equivale proporcionalmente a 50 / 50. Cero, negativos, fracciones, NaN, Infinity y unsafe integers son inválidos.
+Primero se filtran los resultados compatibles, conservando el orden original, y después se elige exactamente uno mediante sus pesos. No se mutan ni normalizan los arrays.
+Si sólo queda un resultado elegible se retorna directamente.
+Si no queda ningún resultado compatible, la selección produce `OutcomeSelectionError` con código `NO_ELIGIBLE_OUTCOME`. No devuelve undefined, no elige el primero y no ignora availability.
 Todo grupo publicado debería incluir al menos un resultado sin condiciones como alternativa segura.
+
+La API pública implementada es:
+
+selectDeterministicOutcome(outcomes, state, context): ProbabilisticOutcome
+
+OutcomeSelectionContext contiene exclusivamente sourceEventId, sourceEventVersion y choiceId. La API pública también expone OutcomeSelectionError y OutcomeSelectionErrorCode. La frontera valida el GameState completo, exige un array no vacío, valida cada ProbabilisticOutcome, valida el contexto exacto y comprueba que cada OutcomeId sea único dentro del array. No deduplica IDs. Un input inválido produce `INVALID_INPUT`.
+
+Un outcome sin availability es elegible. Cuando availability existe se evalúa con `evaluateEventConditionGroup`; false filtra el outcome y una condición estructuralmente inválida produce `INVALID_INPUT`. Un outcome incondicional puede utilizarse narrativamente como fallback, pero no existe un flag formal default o fallback.
+
+La elegibilidad corresponde al GameState posterior a los effects deterministas de la choice. `selectDeterministicOutcome` no aplica esos effects: evalúa exclusivamente el estado recibido. El futuro ChoiceResolution será responsable de aplicar primero los effects de choice, entregar ese estado al selector y aplicar después los effects del outcome.
+
+El namespace determinista exacto está formado, en este orden, por:
+
+1. amateur-app:outcome-selection:v1;
+2. state.seed;
+3. state.runId;
+4. state.currentTurn;
+5. sourceEventId;
+6. sourceEventVersion;
+7. choiceId.
+
+No participan age, currentSeason, OutcomeId, weights, availability, effects, followUps ni un ordinal RNG. Dos runs que compartan seed pueden producir outcomes diferentes porque runId participa; la reproducibilidad se garantiza para los mismos inputs dentro de una partida y no implica todavía shareable seeds entre runs.
+
+Cada componente se codifica literalmente con length-prefix calculado en bytes UTF-8, sin trim ni normalización. La versión `amateur-app:outcome-selection:v1` congela el hash, el encoding, los componentes del namespace y el mapeo ponderado; modificarlos requerirá una decisión explícita de versionado del algoritmo. No existe rngVersion en GameState.
+
+Se utiliza FNV-1a de 64 bits sobre UTF-8, sin dependencias externas, Math.random, crypto ni tiempo. BigInt se usa sólo para cálculo interno y no se persiste. Si H es el hash unsigned de 64 bits, S el peso total, C el peso acumulado y R igual a 2^64, se selecciona el primer outcome donde `H * S < C * R`, todo mediante BigInt, sin floats, módulo ni número aleatorio normalizado. Cada weight individual permanece limitado a safe integer, pero la suma puede superar Number.MAX_SAFE_INTEGER.
+
+El selector es puro y read-only: no modifica state, outcomes ni context y no utiliza estado global mutable. Retorna exclusivamente el ProbabilisticOutcome seleccionado; no aplica effects, no programa follow-ups, no construye AppliedEffectSource ni DecisionRecord y no incrementa currentTurn.
+
+El orden del array de outcomes forma parte del contenido versionado. No se ordena por ID. Cambiar outcomes, weights u orden puede cambiar el resultado y debe acompañarse por una nueva eventVersion, aunque el bump no se fuerza automáticamente.
+
+La implementación no modificó GameState persistido, no agregó estado RNG y no cambió DecisionRecord. Por ello GAME_VERSION permanece en "0.5.0".
 
 Ejemplo:
 
@@ -1638,11 +1669,11 @@ interfaz;
 API;
 base de datos.
 
-La evolución persistible de AppliedEffect, el evaluador de condiciones y la aplicación runtime de lotes de efectos mediante `resolveGameEffects` se implementaron en micro-commits posteriores. Continúan fuera del alcance actual `ChoiceResolution`, la construcción de `DecisionRecord`, la resolución completa de opciones y outcomes, la selección probabilística, el scheduler, el selector del siguiente acontecimiento, el catálogo real, la interfaz, la API y la base de datos.
+La evolución persistible de AppliedEffect, el evaluador de condiciones, la aplicación runtime de lotes de efectos mediante `resolveGameEffects` y la selección determinista de outcomes se implementaron en micro-commits posteriores. Continúan fuera del alcance actual `ChoiceResolution`, la construcción runtime de `DecisionRecord`, la integración choice effects → outcome → outcome effects, los direct follow-ups, el scheduler, el consumo de ScheduledEvents, el selector del siguiente acontecimiento, el catálogo real, la interfaz, la API y la base de datos.
 
-También continúan pendientes la validación integral del catálogo, las repeat/cooldown policies runtime y el consumo de eventos programados.
+También continúan pendientes la validación integral del catálogo y las repeat/cooldown policies runtime.
 
-El primer commit técnico se limitó a los esquemas, tipos y evoluciones estructurales persistibles enumeradas. La evaluación de condiciones y la aplicación de efectos se incorporaron después como micro-commits separados; la selección runtime y el catálogo continúan pendientes.
+El primer commit técnico se limitó a los esquemas, tipos y evoluciones estructurales persistibles enumeradas. La evaluación de condiciones, la aplicación de efectos y la selección determinista de outcomes se incorporaron después como micro-commits separados; la selección del siguiente evento y el catálogo continúan pendientes.
 
 27. Criterios de aceptación de la especificación
 
@@ -1654,7 +1685,7 @@ los campos consultables están controlados;
 los efectos están tipados;
 footballLevel no puede modificarse directamente;
 las decisiones pueden generar resultados probabilísticos;
-el azar será reproducible;
+la selección determinista de outcomes es reproducible para los mismos inputs;
 las consecuencias futuras son persistibles;
 las cadenas pueden construirse sin un árbol rígido;
 la historia registra versión, opción y resultado;

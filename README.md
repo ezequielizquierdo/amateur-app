@@ -132,6 +132,7 @@ Está implementado:
 - follow-ups;
 - políticas de selección y repetición;
 - evaluación pura y determinista de condiciones;
+- selección pura y determinista de outcomes elegibles mediante pesos relativos;
 - `AllowedStateConditionField` como unión TypeScript exacta de los 44 campos permitidos y `StateCondition` con correlación estática entre campo, operador y valor;
 - `AppliedEffect` como unión persistible estricta de las diez familias de efectos;
 - origen e índice de cada efecto aplicado, payload solicitado y snapshots tipados;
@@ -149,11 +150,12 @@ Está implementado:
 Todavía no está implementado:
 
 - resolución completa de elecciones y outcomes;
+- integración de choice effects → selección de outcome → outcome effects;
 - construcción de `DecisionRecord` a partir de una elección resuelta;
 - integración de los follow-ups declarados directamente por opciones y outcomes;
-- selección determinista de outcomes;
 - scheduler runtime;
 - selector del siguiente acontecimiento;
+- políticas repeat/cooldown runtime;
 - catálogo real de acontecimientos;
 - validación integral del catálogo;
 - selección y consumo runtime de eventos programados;
@@ -161,10 +163,28 @@ Todavía no está implementado:
 - frontend;
 - base de datos o persistencia externa.
 
-El motor ya puede aplicar de forma determinista un lote de `GameEffect` y devolver
-el nuevo estado junto con sus registros auditables. Todavía no puede resolver un
-`GameEvent` completo, elegir outcomes ni construir el registro de una decisión.
-Tampoco incluye migraciones entre versiones de partidas.
+El motor ya puede aplicar de forma determinista un lote de `GameEffect`, devolver
+el nuevo estado junto con sus registros auditables y seleccionar un
+`ProbabilisticOutcome` elegible mediante `selectDeterministicOutcome`. El selector
+valida el estado, los outcomes y su contexto, pero no resuelve un `GameEvent`
+completo ni construye el registro de una decisión. Tampoco incluye migraciones
+entre versiones de partidas.
+
+`selectDeterministicOutcome(outcomes, state, context)` es una API pública pura y
+read-only. `OutcomeSelectionContext` contiene `sourceEventId`,
+`sourceEventVersion` y `choiceId`; los fallos controlados utilizan
+`OutcomeSelectionError` y `OutcomeSelectionErrorCode`. La función evalúa la
+availability contra el estado recibido, conserva el orden de los outcomes y
+retorna exclusivamente el seleccionado. El futuro `ChoiceResolution` deberá
+entregarle el estado posterior a los effects de la choice y después aplicar los
+effects del outcome.
+
+Un outcome sin `availability` es elegible. Si ninguno resulta elegible se produce
+`NO_ELIGIBLE_OUTCOME`, sin fallback implícito. Los inputs inválidos, incluidos IDs
+duplicados dentro del array, producen `INVALID_INPUT`. El namespace determinista
+incluye seed y runId, por lo que se garantiza reproducibilidad con los mismos
+inputs dentro de una partida, pero no se prometen todavía seeds compartibles entre
+runs distintos.
 
 `resolveGameEffects` implementa el orden secuencial, la atomicidad sobre una copia,
 las operaciones numéricas, las relaciones, la programación mediante efectos, la

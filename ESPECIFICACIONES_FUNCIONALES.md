@@ -726,7 +726,21 @@ Los contadores ausentes se interpretan como 0. Esta regla es específica de los 
 
 `EventHistoryCondition` utiliza exclusivamente `history.decisions`. Cuenta cada DecisionRecord cuyo eventId coincida mediante igualdad estricta: `completed` exige al menos uno, `notCompleted` exige cero y `completedAtLeast` compara el total con el count solicitado. Cada registro coincidente cuenta por separado; eventVersion, choiceId y outcomeId no alteran el conteo. `history.completedEventIds` permanece en el modelo, pero no se consulta ni se combina con decisions para esta evaluación. Su posible derivación, sincronización o eliminación futura queda fuera de este micro-commit.
 
-Estas reglas están implementadas por el evaluador runtime de condiciones. La selección de eventos, la resolución de opciones, el scheduler y el azar todavía no están implementados. La aplicación de lotes de `GameEffect` se realiza mediante `resolveGameEffects`, pero no constituye por sí sola la resolución completa de un acontecimiento.
+Estas reglas están implementadas por el evaluador runtime de condiciones. La selección del siguiente evento, la resolución completa de opciones y el scheduler todavía no están implementados. La aplicación de lotes de `GameEffect` se realiza mediante `resolveGameEffects`, pero no constituye por sí sola la resolución completa de un acontecimiento.
+
+La selección determinista de outcomes sí está implementada mediante `selectDeterministicOutcome(outcomes, state, context)`. Su contexto público contiene `sourceEventId`, `sourceEventVersion` y `choiceId`; `OutcomeSelectionError` y `OutcomeSelectionErrorCode` distinguen `INVALID_INPUT` de `NO_ELIGIBLE_OUTCOME`. La frontera valida el `GameState`, un array no vacío de `ProbabilisticOutcome`, el contexto exacto y la unicidad de `OutcomeId` dentro del array, sin deduplicar.
+
+Un outcome sin `availability` es elegible; cuando existe, se evalúa mediante `evaluateEventConditionGroup`. Una condición falsa filtra el outcome, mientras que una condición estructuralmente inválida produce `INVALID_INPUT`. El filtrado conserva el orden original. Si no queda ningún outcome elegible se produce `NO_ELIGIBLE_OUTCOME`: no se devuelve `undefined`, no se elige el primero y no existe fallback implícito. Un outcome sin `availability` puede cumplir narrativamente esa función, pero no hay un flag formal de default o fallback.
+
+La elegibilidad se evalúa funcionalmente sobre el `GameState` posterior a los effects deterministas de la choice. El selector no aplica esos effects: utiliza exclusivamente el estado recibido, que el futuro `ChoiceResolution` deberá proporcionar. El orden futuro es aplicar effects de choice, evaluar availability, seleccionar el outcome y aplicar sus effects.
+
+Los weights son safe integers positivos, no necesitan sumar 100 y expresan proporciones relativas: `1 / 1` equivale proporcionalmente a `50 / 50`. Cero, negativos, fracciones, `NaN`, infinito y unsafe integers son inválidos. El orden original forma parte del contenido versionado; cambiar outcomes, weights u orden puede cambiar el resultado y debe acompañarse de una nueva `eventVersion`, aunque ese incremento no se fuerza automáticamente.
+
+La selección es pura, determinista y read-only. No modifica state, outcomes ni context, no usa estado global mutable y retorna exclusivamente el `ProbabilisticOutcome` seleccionado. No aplica effects, no programa follow-ups, no construye `AppliedEffectSource` ni `DecisionRecord` y no incrementa el turno. Si sólo queda un outcome elegible lo retorna directamente.
+
+El namespace v1 está encabezado por `amateur-app:outcome-selection:v1` y continúa, en orden, con `state.seed`, `state.runId`, `state.currentTurn`, `sourceEventId`, `sourceEventVersion` y `choiceId`. No participan edad, temporada, IDs o contenido de outcomes, weights, availability, effects, follow-ups ni un ordinal RNG. Dos partidas con el mismo seed pueden producir resultados diferentes porque `runId` también participa; no se prometen todavía seeds compartibles entre runs.
+
+Esta capacidad runtime no modificó el JSON persistido, no agregó estado RNG y no cambió `DecisionRecord`; por ello `GAME_VERSION` permanece en `"0.5.0"`.
 
 `FollowUpDefinition` describe una consecuencia relativa al momento de una futura resolución. `ScheduledEvent` representa esa consecuencia después de programarse y utiliza valores absolutos. Las variantes `turn`, `age` y `season` requieren `triggerValue` y no admiten `conditions`; la variante `condition` requiere `EventConditionGroup` y no admite `triggerValue`.
 
@@ -1067,8 +1081,10 @@ No se implementará todavía:
 * catálogo de acontecimientos;
 * validación integral del catálogo;
 * resolución de opciones;
-* selección determinista de outcomes;
+* integración de effects de choice, selección de outcome y effects del outcome;
 * construcción de `ChoiceResolution` y `DecisionRecord` desde una elección;
+* integración de follow-ups declarados directamente por choices y outcomes;
+* políticas repeat/cooldown runtime;
 * scheduler runtime y consumo de eventos programados;
 * clubes reales;
 * equipos amateurs;

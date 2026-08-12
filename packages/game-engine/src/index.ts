@@ -6,6 +6,14 @@ export { clampStat } from "./clamp-stat.js";
 export { evaluateEventCondition } from "./events/conditions/evaluate-event-condition.js";
 export { evaluateEventConditionGroup } from "./events/conditions/evaluate-event-condition-group.js";
 export {
+  ChoiceResolutionError,
+  type ChoiceResolutionErrorCode,
+} from "./events/choices/choice-resolution-error.js";
+export {
+  resolveChoice,
+  type ChoiceResolutionResult,
+} from "./events/choices/resolve-choice.js";
+export {
   EventEffectResolutionError,
   type EventEffectResolutionErrorCode,
 } from "./events/event-effect-resolution-error.js";

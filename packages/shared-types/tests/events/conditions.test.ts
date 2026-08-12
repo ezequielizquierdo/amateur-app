@@ -1,13 +1,205 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, expectTypeOf, it } from "vitest";
 
 import {
   EventConditionGroupSchema,
   EventConditionSchema,
   RelationshipSelectorSchema,
   StateConditionSchema,
+  type AllowedStateConditionField,
+  type StateCondition,
 } from "../../src/index.js";
 
+const EXPECTED_STATE_FIELDS = [
+  "stats.mood",
+  "stats.energy",
+  "stats.health",
+  "stats.family",
+  "stats.friends",
+  "stats.finances",
+  "stats.footballLevel",
+  "footballAttributes.talent",
+  "footballAttributes.technique",
+  "footballAttributes.physicalCondition",
+  "footballAttributes.tacticalUnderstanding",
+  "footballAttributes.discipline",
+  "footballAttributes.currentForm",
+  "footballAttributes.potential",
+  "footballAttributes.injuryRisk",
+  "life.age",
+  "life.currentYear",
+  "life.lifeStage",
+  "life.educationStatus",
+  "life.employmentStatus",
+  "life.relationshipStatus",
+  "life.occupationId",
+  "life.employerId",
+  "life.city",
+  "life.country",
+  "life.numberOfChildren",
+  "life.housingStatus",
+  "football.status",
+  "football.careerType",
+  "football.currentTeamId",
+  "football.currentClubId",
+  "football.currentContractId",
+  "football.currentAgentId",
+  "football.teamRole",
+  "football.teamTrust",
+  "football.coachTrust",
+  "football.professionalReputation",
+  "football.amateurReputation",
+  "football.salary",
+  "football.marketValue",
+  "football.isInjured",
+  "football.retirementStatus",
+  "currentSeason",
+  "currentTurn",
+] as const satisfies readonly AllowedStateConditionField[];
+
+type ExpectedStateField = (typeof EXPECTED_STATE_FIELDS)[number];
+
 describe("event conditions", () => {
+  it("preserves exact state condition correlations at compile time", () => {
+    expect(EXPECTED_STATE_FIELDS).toHaveLength(44);
+    expectTypeOf<AllowedStateConditionField>().toEqualTypeOf<ExpectedStateField>();
+    expectTypeOf<AllowedStateConditionField>().toMatchTypeOf<string>();
+    expectTypeOf<string>().not.toMatchTypeOf<AllowedStateConditionField>();
+
+    const numeric = {
+      type: "state",
+      field: "stats.mood",
+      operator: "greaterThan",
+      value: 50,
+    } as const satisfies StateCondition;
+    const boolean = {
+      type: "state",
+      field: "football.isInjured",
+      operator: "equals",
+      value: false,
+    } as const satisfies StateCondition;
+    const lifeStage = {
+      type: "state",
+      field: "life.lifeStage",
+      operator: "equals",
+      value: "adolescence",
+    } as const satisfies StateCondition;
+    const optionalExistence = {
+      type: "state",
+      field: "life.occupationId",
+      operator: "notExists",
+    } as const satisfies StateCondition;
+
+    // @ts-expect-error arbitrary fields are not state condition fields
+    const invalidField: AllowedStateConditionField = "made.up.field";
+
+    const numericString = {
+      type: "state",
+      field: "stats.mood",
+      operator: "equals",
+      value: "high",
+    } as const;
+    // @ts-expect-error numeric state fields require numeric values
+    const invalidNumeric: StateCondition = numericString;
+
+    const booleanNumber = {
+      type: "state",
+      field: "football.isInjured",
+      operator: "equals",
+      value: 1,
+    } as const;
+    // @ts-expect-error boolean state fields require boolean values
+    const invalidBooleanValue: StateCondition = booleanNumber;
+
+    const freeStringNumber = {
+      type: "state",
+      field: "life.occupationId",
+      operator: "equals",
+      value: 1,
+    } as const;
+    // @ts-expect-error free string state fields require string values
+    const invalidFreeStringValue: StateCondition = freeStringNumber;
+
+    const invalidLifeStageValue = {
+      type: "state",
+      field: "life.lifeStage",
+      operator: "equals",
+      value: "academy",
+    } as const;
+    // @ts-expect-error lifeStage values remain correlated to LifeStageSchema
+    const invalidLifeStage: StateCondition = invalidLifeStageValue;
+
+    const invalidLifeStageMembership = {
+      type: "state" as const,
+      field: "life.lifeStage" as const,
+      operator: "in" as const,
+      value: ["academy"],
+    };
+    // @ts-expect-error lifeStage membership values remain correlated
+    const invalidLifeStageIn: StateCondition = invalidLifeStageMembership;
+
+    const invalidFootballStatusValue = {
+      type: "state",
+      field: "football.status",
+      operator: "equals",
+      value: "adolescence",
+    } as const;
+    // @ts-expect-error football status does not accept life stage values
+    const invalidFootballStatus: StateCondition = invalidFootballStatusValue;
+
+    const booleanComparator = {
+      type: "state",
+      field: "football.isInjured",
+      operator: "greaterThan",
+      value: true,
+    } as const;
+    // @ts-expect-error boolean state fields do not accept numeric comparators
+    const invalidBooleanOperator: StateCondition = booleanComparator;
+
+    const stringComparator = {
+      type: "state",
+      field: "life.city",
+      operator: "greaterThan",
+      value: "Rosario",
+    } as const;
+    // @ts-expect-error string state fields do not accept numeric comparators
+    const invalidStringOperator: StateCondition = stringComparator;
+
+    const enumComparator = {
+      type: "state",
+      field: "life.lifeStage",
+      operator: "greaterThan",
+      value: "adolescence",
+    } as const;
+    // @ts-expect-error enum state fields do not accept numeric comparators
+    const invalidEnumOperator: StateCondition = enumComparator;
+
+    const invalidExistence: StateCondition = {
+      type: "state",
+      field: "life.occupationId",
+      operator: "notExists",
+      // @ts-expect-error existence conditions do not contain value
+      value: "unexpected",
+    };
+
+    expect([
+      numeric,
+      boolean,
+      lifeStage,
+      optionalExistence,
+      invalidField,
+      invalidNumeric,
+      invalidBooleanValue,
+      invalidFreeStringValue,
+      invalidLifeStage,
+      invalidLifeStageIn,
+      invalidFootballStatus,
+      invalidBooleanOperator,
+      invalidStringOperator,
+      invalidEnumOperator,
+      invalidExistence,
+    ]).toHaveLength(15);
+  });
+
   it.each([
     { type: "state", field: "stats.mood", operator: "greaterThan", value: 50 },
     { type: "flag", key: "accepted_offer", operator: "equals", value: true },
@@ -49,6 +241,12 @@ describe("event conditions", () => {
       field: "football.isInjured",
       operator: "lessThan",
       value: false,
+    },
+    {
+      type: "state",
+      field: "life.lifeStage",
+      operator: "equals",
+      value: "academy",
     },
     { type: "state", field: "life.lifeStage", operator: "in", value: [] },
   ])("rejects incompatible state operators and values", (condition) => {

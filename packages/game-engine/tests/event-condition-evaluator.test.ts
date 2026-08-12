@@ -3,7 +3,7 @@ import {
   type AllowedStateConditionField,
   type EventCondition,
 } from "@amateur-app/shared-types";
-import { describe, expect, it } from "vitest";
+import { describe, expect, expectTypeOf, it } from "vitest";
 
 import * as gameEngine from "../src/index.js";
 import {
@@ -24,7 +24,7 @@ function evaluate(
   return evaluateEventCondition(parsedCondition(value), state);
 }
 
-const ALL_STATE_FIELDS: AllowedStateConditionField[] = [
+const ALL_STATE_FIELDS = [
   "stats.mood",
   "stats.energy",
   "stats.health",
@@ -69,10 +69,16 @@ const ALL_STATE_FIELDS: AllowedStateConditionField[] = [
   "football.retirementStatus",
   "currentSeason",
   "currentTurn",
-];
+] as const satisfies readonly AllowedStateConditionField[];
 
 describe("event condition evaluator", () => {
   describe("state conditions", () => {
+    it("lists every allowed state field exactly", () => {
+      expectTypeOf<
+        (typeof ALL_STATE_FIELDS)[number]
+      >().toEqualTypeOf<AllowedStateConditionField>();
+    });
+
     it.each([
       ["equals", 60, true],
       ["notEquals", 59, true],
@@ -223,7 +229,7 @@ describe("event condition evaluator", () => {
             type: "state",
             field: "profile.name",
             operator: "exists",
-          },
+          } as unknown as EventCondition,
           createInitialGameState(createInput()),
         ),
       ).toThrow();

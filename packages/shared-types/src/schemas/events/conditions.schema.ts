@@ -59,32 +59,37 @@ const numericStateFields = z.enum([
   "currentTurn",
 ]);
 
-const stringStateFieldSchemas = {
-  "life.lifeStage": LifeStageSchema,
-  "life.educationStatus": EducationStatusSchema,
-  "life.employmentStatus": EmploymentStatusSchema,
-  "life.relationshipStatus": RelationshipStatusSchema,
-  "life.occupationId": NonEmptyStringSchema,
-  "life.employerId": NonEmptyStringSchema,
-  "life.city": NonEmptyStringSchema,
-  "life.country": NonEmptyStringSchema,
-  "life.housingStatus": HousingStatusSchema,
-  "football.status": FootballStatusSchema,
-  "football.careerType": CareerTypeSchema,
-  "football.currentTeamId": NonEmptyStringSchema,
-  "football.currentClubId": NonEmptyStringSchema,
-  "football.currentContractId": NonEmptyStringSchema,
-  "football.currentAgentId": NonEmptyStringSchema,
-  "football.teamRole": TeamRoleSchema,
-  "football.retirementStatus": RetirementStatusSchema,
-} as const;
+const nonEmptyStringStateFields = z.enum([
+  "life.occupationId",
+  "life.employerId",
+  "life.city",
+  "life.country",
+  "football.currentTeamId",
+  "football.currentClubId",
+  "football.currentContractId",
+  "football.currentAgentId",
+]);
 
-const stringStateConditions = Object.entries(stringStateFieldSchemas).flatMap(
-  ([field, valueSchema]) => [
+const lifeStageStateField = z.literal("life.lifeStage");
+const educationStatusStateField = z.literal("life.educationStatus");
+const employmentStatusStateField = z.literal("life.employmentStatus");
+const relationshipStatusStateField = z.literal("life.relationshipStatus");
+const housingStatusStateField = z.literal("life.housingStatus");
+const footballStatusStateField = z.literal("football.status");
+const careerTypeStateField = z.literal("football.careerType");
+const teamRoleStateField = z.literal("football.teamRole");
+const retirementStatusStateField = z.literal("football.retirementStatus");
+const isInjuredStateField = z.literal("football.isInjured");
+
+function createEqualityAndMembershipConditions<
+  TFieldSchema extends z.ZodType<string>,
+  TValueSchema extends z.ZodType,
+>(fieldSchema: TFieldSchema, valueSchema: TValueSchema) {
+  return [
     z
       .object({
         type: z.literal("state"),
-        field: z.literal(field),
+        field: fieldSchema,
         operator: equalityOperators,
         value: valueSchema,
       })
@@ -92,18 +97,72 @@ const stringStateConditions = Object.entries(stringStateFieldSchemas).flatMap(
     z
       .object({
         type: z.literal("state"),
-        field: z.literal(field),
+        field: fieldSchema,
         operator: membershipOperators,
         value: z.array(valueSchema).min(1),
       })
       .strict(),
-  ],
+  ] as const;
+}
+
+const nonEmptyStringStateConditions = createEqualityAndMembershipConditions(
+  nonEmptyStringStateFields,
+  NonEmptyStringSchema,
+);
+const lifeStageStateConditions = createEqualityAndMembershipConditions(
+  lifeStageStateField,
+  LifeStageSchema,
+);
+const educationStatusStateConditions = createEqualityAndMembershipConditions(
+  educationStatusStateField,
+  EducationStatusSchema,
+);
+const employmentStatusStateConditions = createEqualityAndMembershipConditions(
+  employmentStatusStateField,
+  EmploymentStatusSchema,
+);
+const relationshipStatusStateConditions = createEqualityAndMembershipConditions(
+  relationshipStatusStateField,
+  RelationshipStatusSchema,
+);
+const housingStatusStateConditions = createEqualityAndMembershipConditions(
+  housingStatusStateField,
+  HousingStatusSchema,
+);
+const footballStatusStateConditions = createEqualityAndMembershipConditions(
+  footballStatusStateField,
+  FootballStatusSchema,
+);
+const careerTypeStateConditions = createEqualityAndMembershipConditions(
+  careerTypeStateField,
+  CareerTypeSchema,
+);
+const teamRoleStateConditions = createEqualityAndMembershipConditions(
+  teamRoleStateField,
+  TeamRoleSchema,
+);
+const retirementStatusStateConditions = createEqualityAndMembershipConditions(
+  retirementStatusStateField,
+  RetirementStatusSchema,
+);
+const isInjuredStateConditions = createEqualityAndMembershipConditions(
+  isInjuredStateField,
+  z.boolean(),
 );
 
 export const AllowedStateConditionFieldSchema = z.enum([
   ...numericStateFields.options,
-  ...Object.keys(stringStateFieldSchemas),
-  "football.isInjured",
+  ...nonEmptyStringStateFields.options,
+  lifeStageStateField.value,
+  educationStatusStateField.value,
+  employmentStatusStateField.value,
+  relationshipStatusStateField.value,
+  housingStatusStateField.value,
+  footballStatusStateField.value,
+  careerTypeStateField.value,
+  teamRoleStateField.value,
+  retirementStatusStateField.value,
+  isInjuredStateField.value,
 ]);
 
 export const StateConditionSchema = z.union([
@@ -123,23 +182,17 @@ export const StateConditionSchema = z.union([
       value: z.array(z.number().finite()).min(1),
     })
     .strict(),
-  ...stringStateConditions,
-  z
-    .object({
-      type: z.literal("state"),
-      field: z.literal("football.isInjured"),
-      operator: equalityOperators,
-      value: z.boolean(),
-    })
-    .strict(),
-  z
-    .object({
-      type: z.literal("state"),
-      field: z.literal("football.isInjured"),
-      operator: membershipOperators,
-      value: z.array(z.boolean()).min(1),
-    })
-    .strict(),
+  ...nonEmptyStringStateConditions,
+  ...lifeStageStateConditions,
+  ...educationStatusStateConditions,
+  ...employmentStatusStateConditions,
+  ...relationshipStatusStateConditions,
+  ...housingStatusStateConditions,
+  ...footballStatusStateConditions,
+  ...careerTypeStateConditions,
+  ...teamRoleStateConditions,
+  ...retirementStatusStateConditions,
+  ...isInjuredStateConditions,
   z
     .object({
       type: z.literal("state"),
